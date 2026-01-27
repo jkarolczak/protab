@@ -1,0 +1,241 @@
+import os
+from dataclasses import dataclass
+from typing import Sequence
+
+import torch
+import wandb
+from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
+
+from protab.data.dataset import (DataContainer,
+                                 SimpleDataset)
+from protab.models.protab import ProTab
+from protab.training.log import WandbConfig
+from protab.training.loss import (CompoundLoss,
+                                  CompoundLossConfig)
+
+
+@dataclass
+class ProTabTrainerConfig:
+    batch_size: int
+    epochs_stage_1: int
+    epochs_stage_2: int
+    epochs_stage_3: int
+    criterion_config: CompoundLossConfig
+    wandb_config: WandbConfig
+    device: str = "cpu"
+    learning_rate: float = 1e-3
+    run_validation: bool = True
+    verbose: bool = True
+
+
+class ProTabTrainer:
+    def __init__(
+            self,
+            data_container: DataContainer,
+            model: ProTab,
+            config: ProTabTrainerConfig
+    ) -> None:
+        self.config = config
+        self.device = torch.device(self.config.device)
+        self.data_container = data_container
+        train_set, eval_set, _ = self.data_container.to_triplet_datasets()
+
+        self.train_dataloader = self._build_dataloader(train_set)
+        self.eval_dataloader = self._build_dataloader(eval_set)
+
+        self.model = model.to(self.config.device)
+        self.criterion = CompoundLoss(self.config.criterion_config)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.learning_rate)
+
+    def _build_dataloader(
+            self,
+            dataset: SimpleDataset,
+            shuffle: bool = True
+    ) -> DataLoader:
+        num_workers = int(0.75 * os.cpu_count())
+
+        return torch.utils.data.DataLoader(
+            dataset,
+            batch_size=self.config.batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            pin_memory=True if "cuda" in self.config.device else False,
+            persistent_workers=True,
+            prefetch_factor=2
+        )
+
+    def _train_epoch(self) -> None:
+        self.model.train()
+        total_loss = 0.0
+
+        for anchor, positive, negative, labels in tqdm(self.train_dataloader, leave=False, desc="Epoch batches",
+                                                       disable=not self.config.verbose):
+            self.optimizer.zero_grad()
+
+            anchor = anchor.to(self.device)
+            positive = positive.to(self.device)
+            negative = negative.to(self.device)
+            labels = labels.to(self.device)
+
+            logits, anchor_embeddings = self.model.forward(anchor, return_embeddings=True)  # (B, C), (B, P, E)
+            positive_embeddings = self.model.embeddings(positive)  # (B, P, E)
+            negative_embeddings = self.model.embeddings(negative)  # (B, P, E)
+
+            loss = self.criterion(
+                logits=logits,
+                targets=labels,
+                anchor_embeddings=anchor_embeddings,
+                positive_embeddings=positive_embeddings,
+                negative_embeddings=negative_embeddings,
+                patching_weights=self.model.patching.weights,
+                prototypes_weights=self.model.prototypes.prototypes
+            )
+            total_loss += loss.item()
+
+            loss.backward()
+            self.optimizer.step()
+
+        avg_loss = total_loss / len(self.train_dataloader)
+        wandb.log({"train_loss": avg_loss})
+
+    def _train_stage(
+            self,
+            n_epochs: int,
+            idx: int | None = None
+    ) -> None:
+        desc = f"Training epochs (stage {idx})" if idx is not None else "Evaluation batches"
+
+        for _ in tqdm(range(n_epochs), desc=desc, disable=not self.config.verbose):
+            self._train_epoch()
+
+    def _validation(
+            self,
+            idx: int | None = None
+    ) -> dict[str, float]:
+
+        self.model.eval()
+        metrics = {}
+        logits_list = []
+        labels_list = []
+
+        desc = f"Evaluation batches (stage {idx})" if idx is not None else "Evaluation batches"
+
+        with torch.no_grad():
+            for anchor, positive, negative, labels in tqdm(self.eval_dataloader, leave=False, desc=desc,
+                                                           disable=not self.config.verbose):
+                anchor = anchor.to(self.device)
+                positive = positive.to(self.device)
+                negative = negative.to(self.device)
+                labels = labels.to(self.device)
+
+                logits, anchor_embeddings = self.model.forward(anchor, return_embeddings=True)  # (B, C), (B, P, E)
+
+                logits_list.append(logits.cpu())
+                labels_list.append(labels.cpu())
+
+                positive_embeddings = self.model.embeddings(positive)  # (B, P, E)
+                negative_embeddings = self.model.embeddings(negative)  # (B, P, E)
+
+                total, ce, triplet, patch_diversity, proto_diversity = self.criterion.forward_partial(
+                    logits=logits,
+                    targets=labels,
+                    anchor_embeddings=anchor_embeddings,
+                    positive_embeddings=positive_embeddings,
+                    negative_embeddings=negative_embeddings,
+                    patching_weights=self.model.patching.weights,
+                    prototypes_weights=self.model.prototypes.prototypes
+                )
+
+                for m in ["total", "ce", "triplet", "patch_diversity", "proto_diversity"]:
+                    if m not in metrics:
+                        metrics[m] = 0.0
+                    metrics[m] += locals()[m].item() * len(labels)
+
+        for m in metrics:
+            metrics[m] /= len(self.eval_dataloader.dataset)
+
+        logits_all = torch.cat(logits_list, dim=0)
+        labels_all = torch.cat(labels_list, dim=0)
+
+        import torchmetrics.functional as tmf
+
+        num_classes = logits_all.shape[-1]
+        task = "multiclass" if num_classes > 2 else "binary"
+
+        metrics["accuracy"] = tmf.classification.accuracy(logits_all, labels_all, task=task, average="micro",
+                                                          num_classes=num_classes).item()
+        metrics["balanced_accuracy"] = tmf.classification.recall(logits_all, labels_all, average="macro", task=task,
+                                                                 num_classes=num_classes).item()
+        metrics["precision"] = tmf.classification.precision(logits_all, labels_all, average="macro", task=task,
+                                                            num_classes=num_classes).item()
+        metrics["f1_score"] = tmf.classification.f1_score(logits_all, labels_all, average="macro", task=task,
+                                                          num_classes=num_classes).item()
+        metrics["cohen_kappa"] = tmf.cohen_kappa(logits_all, labels_all, task=task, num_classes=num_classes).item()
+
+        for m in metrics:
+            wandb.log({f"eval_{m}": metrics[m]})
+
+        if self.config.verbose:
+            print("Metrics:", metrics)
+
+        return metrics
+
+    def train(
+            self,
+            return_score: bool = False,
+            wandb_tags: Sequence[str] | None = None
+    ) -> None | float:
+        import wandb
+
+        wandb.init(
+            project=self.config.wandb_config.project,
+            entity=self.config.wandb_config.entity,
+            mode="online" if self.config.wandb_config.active else "disabled",
+            tags=wandb_tags,
+            config={
+                "experiment": self.config,
+                "model": self.model.config,
+                "criterion": self.config.criterion_config
+            }
+        )
+
+        # Stage 1: probabilistic patching
+        self._train_stage(self.config.epochs_stage_1, idx=1)
+        if self.config.run_validation:
+            self._validation(idx=1)
+
+        # Stage 2: deterministic patching, artificial prototypes
+        if self.config.epochs_stage_2 > 0:
+            self.model.patching.config.probabilistic = False
+            self._train_stage(self.config.epochs_stage_2, idx=2)
+            if self.config.run_validation:
+                self._validation(idx=2)
+
+        # Stage 3: deterministic patching, real-world prototypes, classification fine-tuning
+        if self.config.epochs_stage_3 > 0:
+            train_dataset = SimpleDataset(self.data_container.x_train, self.data_container.y_train)
+            dataloader = self._build_dataloader(train_dataset, shuffle=False)
+            dist, idcs, patches = self.model.set_real_prototypes(dataloader)
+            self._train_stage(self.config.epochs_stage_3, idx=3)
+
+            readable_patches = self.data_container.descale(patches)
+
+            if self.config.run_validation:
+                metrics = self._validation(idx=3)
+
+            if self.config.verbose:
+                print("Distances:")
+                print(dist)
+                print("Indices:")
+                print(idcs)
+                print("Prototypical parts:")
+                print(readable_patches)
+                print("Classification matrix:")
+                print(self.model.classifier.network[-1].weight.data)
+
+        wandb.finish()
+
+        if return_score and self.config.run_validation:
+            return metrics["balanced_accuracy"]
+        return None

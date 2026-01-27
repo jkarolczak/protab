@@ -1,0 +1,32 @@
+data:
+  name: "statlog_shuttle"
+model:
+  n_patches: 32
+  patch_len: 3
+  n_prototypes: 16
+  encoder_hidden_dims: [ 64 , 32, 16 ]
+  prototype_dim: 8
+  classifier_hidden_dims: [ ]
+  append_masks: true
+  probabilistic: true
+  prototype_distance_metric: "l2"
+trainer:
+  batch_size: 256
+  epochs_stage_1: 10
+  epochs_stage_2: 2
+  epochs_stage_3: 1
+  criterion_config:
+    triplet_margin: 1.0
+    triplet_p: 2
+    w_ce: 1.00
+    w_triplet: 0.50
+    w_patch_diversity: 0.50
+    w_proto_diversity: 0.50
+  wandb_config:
+    project: "ProTab"
+    entity: "jacek-karolczak"
+    active: false
+  verbose: true
+  device: "cpu"
+  learning_rate: 0.001
+  run_validation: true
