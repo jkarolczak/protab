@@ -83,7 +83,7 @@ def save_to_csvs(
     base = os.environ.get("PROTAB_DATASETS", "./data/")
     base_path = Path(base)
     dataset_path = base_path / name
-    dataset_path.mkdir(exist_ok=True)
+    dataset_path.mkdir(parents=True, exist_ok=True)
 
     x_train.to_csv(dataset_path / "train_x.csv", index=False)
     y_train.to_csv(dataset_path / "train_y.csv", index=False)
