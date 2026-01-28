@@ -9,24 +9,26 @@ from protab.training.trainer import ProTabTrainer
 
 def objective(
         trial: optuna.Trial,
-        dataset_name: TNamedData
+        dataset_name: TNamedData,
+        device: str,
+        log_wandb: bool
 ) -> float:
     data_container, protab_config, trainer_config = read_data_and_configs(dataset_name)
+    trainer_config.device = device
+    trainer_config.wandb_config.active = log_wandb
 
     # model architecture hyperparameters
     # noinspection PyTypeChecker
     encoder_dims = trial.suggest_categorical("protab_config.encoder_hidden_dims", [
-        "128", "384",  # shallow, wide
-        "64,64", "192,192",  # two layers, medium
-        "32,32,32", "96,96,96",  # three layers, narrow
-        "64,128,64",  # diamond shaped
-        "128,64,16",  # funnel shaped
-        "64,96,128"  # bell shaped
+        "32,32", "64,64", "32,32,32", "64,64,64",  # simple architectures
+        "32,16", "64,32", "128,64", "128,64,32", "256,96,32", "128,64,32,16",  # gradual compression
+        "64,128,64"  # diamond shape for non-linear feature interactions
     ])
-    protab_config.patching.append_masks = trial.suggest_categorical("protab_config.patching.append_masks", [True, False])
+    # protab_config.patching.append_masks = trial.suggest_categorical("protab_config.patching.append_masks", [True, False])
+    protab_config.patching.append_masks = True
     protab_config.encoder.input_dim = data_container.n_features * (2 if protab_config.patching.append_masks else 1)
 
-    protab_config.encoder_hidden_dims = [int(dim_str) for dim_str in encoder_dims.split(",")]
+    protab_config.encoder_hidden_dims = [int(dim_str.strip()) for dim_str in encoder_dims.split(",")]
     prototype_dim = trial.suggest_categorical("protab_config.prototypes.prototype_dim", [2, 3, 5, 8])
     protab_config.prototypes.prototype_dim = prototype_dim
     protab_config.encoder.output_dim = prototype_dim
@@ -46,9 +48,12 @@ def objective(
 
 @click.command()
 @click.argument("dataset_name", type=click.Choice(TNamedData.__args__))
-def main(dataset_name: TNamedData) -> None:
+@click.option("--device", type=str, default="cpu")
+@click.option("--n_trials", type=int, default=200)
+@click.option("--log-wandb", is_flag=True)
+def main(dataset_name: TNamedData, device: str, n_trials: int, log_wandb) -> None:
     study = optuna.create_study(direction=optuna.study.StudyDirection.MAXIMIZE)
-    study.optimize(lambda trial: objective(trial, dataset_name), n_trials=100, timeout=10 * 60)
+    study.optimize(lambda trial: objective(trial, dataset_name, device, log_wandb), n_trials=n_trials, timeout=24 * 60)
     print(f"Best params is {study.best_params} with value {study.best_value}")
 
 

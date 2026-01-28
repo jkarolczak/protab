@@ -60,8 +60,8 @@ class CompoundLoss(nn.Module):
 
         w_ce = self.config.w_ce * ce
         w_triplet = self.config.w_triplet * triplet
-        w_patch_diversity = self.config.w_patch_diversity * diversity(patching_weights)
-        w_proto_diversity = self.config.w_proto_diversity * diversity(prototypes_weights)
+        w_patch_diversity = self.config.w_patch_diversity * patch_diversity
+        w_proto_diversity = self.config.w_proto_diversity * proto_diversity
 
         total_loss = w_ce + w_triplet + w_patch_diversity + w_proto_diversity
         return total_loss, ce, triplet, patch_diversity, proto_diversity

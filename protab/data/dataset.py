@@ -219,9 +219,9 @@ class DataContainer:
             dataset_class: type[SimpleDataset]
     ) -> tuple[SimpleDataset, SimpleDataset, SimpleDataset]:
         train = dataset_class(self.x_train, self.y_train)
-        eval = dataset_class(self.x_eval, self.y_eval)
+        valid = dataset_class(self.x_eval, self.y_eval)
         test = dataset_class(self.x_test, self.y_test)
-        return train, eval, test
+        return train, valid, test
 
     def to_simple_datasets(self) -> tuple[SimpleDataset, SimpleDataset, SimpleDataset]:
         return self._create_dataset_bundle(SimpleDataset)

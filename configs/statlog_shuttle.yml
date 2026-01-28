@@ -1,9 +1,9 @@
 data:
   name: "statlog_shuttle"
 model:
-  n_patches: 32
+  n_patches: 8
   patch_len: 3
-  n_prototypes: 16
+  n_prototypes: 32
   encoder_hidden_dims: [ 64 , 32, 16 ]
   prototype_dim: 8
   classifier_hidden_dims: [ ]
@@ -13,7 +13,7 @@ model:
 trainer:
   batch_size: 256
   epochs_stage_1: 10
-  epochs_stage_2: 2
+  epochs_stage_2: 3
   epochs_stage_3: 1
   criterion_config:
     triplet_margin: 1.0

@@ -1,4 +1,6 @@
 import os
+import platform
+import uuid
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -13,6 +15,7 @@ from protab.models.protab import ProTab
 from protab.training.log import WandbConfig
 from protab.training.loss import (CompoundLoss,
                                   CompoundLossConfig)
+from protab.training.utils import SimpleCounter
 
 
 @dataclass
@@ -47,6 +50,8 @@ class ProTabTrainer:
         self.model = model.to(self.config.device)
         self.criterion = CompoundLoss(self.config.criterion_config)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.learning_rate)
+
+        self._iter_counter = SimpleCounter()
 
     def _build_dataloader(
             self,
@@ -97,7 +102,7 @@ class ProTabTrainer:
             self.optimizer.step()
 
         avg_loss = total_loss / len(self.train_dataloader)
-        wandb.log({"train_loss": avg_loss})
+        wandb.log({"train_loss": avg_loss}, step=self._iter_counter())
 
     def _train_stage(
             self,
@@ -174,7 +179,7 @@ class ProTabTrainer:
         metrics["cohen_kappa"] = tmf.cohen_kappa(logits_all, labels_all, task=task, num_classes=num_classes).item()
 
         for m in metrics:
-            wandb.log({f"eval_{m}": metrics[m]})
+            wandb.log({f"eval_{m}": metrics[m]}, step=int(self._iter_counter))
 
         if self.config.verbose:
             print("Metrics:", metrics)
@@ -188,15 +193,19 @@ class ProTabTrainer:
     ) -> None | float:
         import wandb
 
+        platform_name = platform.node()
+
         wandb.init(
             project=self.config.wandb_config.project,
             entity=self.config.wandb_config.entity,
+            name=f"{self.data_container.config.name}_{platform_name}_{uuid.uuid4()}",
             mode="online" if self.config.wandb_config.active else "disabled",
             tags=wandb_tags,
             config={
-                "experiment": self.config,
-                "model": self.model.config,
-                "criterion": self.config.criterion_config
+                "model": self.model.config.__dict__,
+                "trainer": self.config.__dict__,
+                "data": self.data_container.config.__dict__,
+                "platform": platform_name
             }
         )
 
@@ -233,6 +242,22 @@ class ProTabTrainer:
                 print(readable_patches)
                 print("Classification matrix:")
                 print(self.model.classifier.network[-1].weight.data)
+
+            cls_matrix_cols = [f"Proto_{i}" for i in range(self.model.classifier.network[-1].weight.shape[1])]
+            wandb.log({
+                "distances": dist.tolist(),
+                "indices": idcs.tolist(),
+                "prototypical_parts": wandb.Table(data=readable_patches.to_numpy().tolist(),
+                                                  columns=readable_patches.columns.map(str).tolist()),
+                "classification_matrix": wandb.Table(data=self.model.classifier.network[-1].weight.data.cpu().tolist(),
+                                                     columns=cls_matrix_cols)
+            })
+
+        if self.config.wandb_config.active:
+            model_filename = "model_state_dict.pt"
+            model_path = os.path.join(wandb.run.dir, model_filename)
+            torch.save(self.model.state_dict(), model_path)
+            wandb.save(model_path, policy="now")
 
         wandb.finish()
 
