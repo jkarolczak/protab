@@ -41,6 +41,15 @@ class CompoundLoss(nn.Module):
         self.cross_entropy_loss = nn.BCEWithLogitsLoss(pos_weight=ce_pos_weight)
         self.triplet_margin_loss = nn.TripletMarginLoss(margin=self.config.triplet_margin, p=self.config.triplet_p)
 
+    def to(
+            self,
+            device: str | torch.device
+    ) -> 'CompoundLoss':
+        self.cross_entropy_loss.to(device)
+        self.triplet_margin_loss.to(device)
+
+        return self
+
     def forward_partial(
             self,
             logits: torch.Tensor,

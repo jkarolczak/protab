@@ -47,8 +47,8 @@ class ProTabTrainer:
         self.train_dataloader = self._build_dataloader(train_set)
         self.eval_dataloader = self._build_dataloader(eval_set)
 
-        self.model = model.to(self.config.device)
-        self.criterion = CompoundLoss(self.config.criterion_config)
+        self.model = model.to(self.device)
+        self.criterion = CompoundLoss(self.config.criterion_config).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.learning_rate)
 
         self._iter_counter = SimpleCounter()
