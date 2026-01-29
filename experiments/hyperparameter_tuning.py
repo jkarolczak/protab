@@ -49,7 +49,7 @@ def objective(
 @click.command()
 @click.argument("dataset_name", type=click.Choice(TNamedData.__args__))
 @click.option("--device", type=str, default="cpu")
-@click.option("--n_trials", type=int, default=200)
+@click.option("--n-trials", type=int, default=200)
 @click.option("--log-wandb", is_flag=True)
 def main(dataset_name: TNamedData, device: str, n_trials: int, log_wandb) -> None:
     study = optuna.create_study(direction=optuna.study.StudyDirection.MAXIMIZE)

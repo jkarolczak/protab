@@ -7,7 +7,7 @@ from protab.training.trainer import ProTabTrainer
 
 
 @click.command()
-@click.argument("dataset_name", type=click.Choice(TNamedData.__args__))
+@click.argument("dataset-name", type=click.Choice(TNamedData.__args__))
 def main(dataset_name: TNamedData) -> None:
     data_container, protab_config, trainer_config = read_data_and_configs(dataset_name)
     protab = ProTab(protab_config)
