@@ -207,10 +207,16 @@ class DataContainer:
 
     @property
     def pos_weight(self) -> list[float]:
-        num_positives = self.y_train.sum(axis=0)
-        num_negatives = len(self.y_train) - num_positives
+        y_train = np.asarray(self.y_train)
+        num_positives = np.sum(y_train, axis=0)
+        num_negatives = y_train.shape[0] - num_positives
 
-        pos_weights = (num_negatives / num_positives.replace(0, 1)).values
+        pos_weights = np.divide(
+            num_negatives,
+            num_positives,
+            out=np.ones_like(num_positives, dtype=float),
+            where=num_positives != 0
+        )
 
         return pos_weights.tolist()
 

@@ -58,7 +58,7 @@ class ProTabTrainer:
             dataset: SimpleDataset,
             shuffle: bool = True
     ) -> DataLoader:
-        num_workers = int(0.75 * os.cpu_count())
+        num_workers = min(4, max(int(0.75 * os.cpu_count()), 1))
 
         return torch.utils.data.DataLoader(
             dataset,
@@ -162,11 +162,12 @@ class ProTabTrainer:
 
         logits_all = torch.cat(logits_list, dim=0)
         labels_all = torch.cat(labels_list, dim=0)
+        labels_all = torch.argmax(labels_all, dim=1)
 
         import torchmetrics.functional as tmf
 
         num_classes = logits_all.shape[-1]
-        task = "multiclass" if num_classes > 2 else "binary"
+        task = "multiclass"
 
         metrics["accuracy"] = tmf.classification.accuracy(logits_all, labels_all, task=task, average="micro",
                                                           num_classes=num_classes).item()
