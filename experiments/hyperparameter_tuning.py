@@ -19,7 +19,7 @@ def objective(
 
     # model architecture hyperparameters
     # noinspection PyTypeChecker
-    encoder_dims = trial.suggest_categorical("protab_config.encoder_hidden_dims", [
+    encoder_dims = trial.suggest_categorical("protab_config.encoder.hidden_dims", [
         "32,32", "64,64", "32,32,32", "64,64,64",  # simple architectures
         "32,16", "64,32", "128,64", "128,64,32", "256,96,32", "128,64,32,16",  # gradual compression
         "64,128,64"  # diamond shape for non-linear feature interactions
@@ -28,7 +28,7 @@ def objective(
     protab_config.patching.append_masks = True
     protab_config.encoder.input_dim = data_container.n_features * (2 if protab_config.patching.append_masks else 1)
 
-    protab_config.encoder_hidden_dims = [int(dim_str.strip()) for dim_str in encoder_dims.split(",")]
+    protab_config.encoder.hidden_dims = [int(dim_str.strip()) for dim_str in encoder_dims.split(",")]
     prototype_dim = trial.suggest_categorical("protab_config.prototypes.prototype_dim", [2, 3, 5, 8])
     protab_config.prototypes.prototype_dim = prototype_dim
     protab_config.encoder.output_dim = prototype_dim
