@@ -56,9 +56,9 @@ class ProTabTrainer:
     def _build_dataloader(
             self,
             dataset: SimpleDataset,
-            shuffle: bool = True
+            shuffle: bool = True,
+            num_workers: int = 1
     ) -> DataLoader:
-        num_workers = min(4, max(int(0.75 * os.cpu_count()), 1))
 
         return torch.utils.data.DataLoader(
             dataset,
@@ -66,8 +66,8 @@ class ProTabTrainer:
             shuffle=shuffle,
             num_workers=num_workers,
             pin_memory=True if "cuda" in self.config.device else False,
-            persistent_workers=True,
-            prefetch_factor=2
+            persistent_workers=True if num_workers > 0 else False,
+            prefetch_factor=2 if num_workers > 0 else None
         )
 
     def _train_epoch(self) -> None:
@@ -179,8 +179,8 @@ class ProTabTrainer:
                                                           num_classes=num_classes).item()
         metrics["cohen_kappa"] = tmf.cohen_kappa(logits_all, labels_all, task=task, num_classes=num_classes).item()
 
-        for m in metrics:
-            wandb.log({f"eval_{m}": metrics[m]}, step=int(self._iter_counter))
+        wandb_log_dict = {f"eval_{k}": v for k, v in metrics.items()}
+        wandb.log(wandb_log_dict, step=int(self._iter_counter))
 
         if self.config.verbose:
             print("Metrics:", metrics)
@@ -252,7 +252,7 @@ class ProTabTrainer:
                                                   columns=readable_patches.columns.map(str).tolist()),
                 "classification_matrix": wandb.Table(data=self.model.classifier.network[-1].weight.data.cpu().tolist(),
                                                      columns=cls_matrix_cols)
-            })
+            }, step=int(self._iter_counter))
 
         if self.config.wandb_config.active:
             model_filename = "model_state_dict.pt"
