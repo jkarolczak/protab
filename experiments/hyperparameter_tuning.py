@@ -64,7 +64,8 @@ def objective(
 @click.option("--log-wandb", is_flag=True)
 def main(dataset_name: TNamedData, device: str, n_trials: int, log_wandb) -> None:
     study = optuna.create_study(direction=optuna.study.StudyDirection.MAXIMIZE)
-    study.optimize(lambda trial: objective(trial, dataset_name, device, log_wandb), n_trials=n_trials, timeout=3 * 24 * 60)
+    study.optimize(lambda trial: objective(trial, dataset_name, device, log_wandb), n_trials=n_trials,
+                   timeout=3 * 24 * 60 * 60)
     print(f"Best params is {study.best_params} with value {study.best_value}")
 
 
