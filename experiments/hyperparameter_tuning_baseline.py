@@ -98,6 +98,7 @@ def objective(trial: optuna.Trial, dataset_name: TNamedData, model_name: str, lo
             mode="online",
             tags=["hyperparameter_tuning", "baseline", model_name],
             config={
+                "architecture": model_name,
                 "model": params,
                 "model_type": model_name,
                 "platform": platform_name},

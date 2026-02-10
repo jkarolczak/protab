@@ -203,6 +203,7 @@ class ProTabTrainer:
             mode="online" if self.config.wandb_config.active else "disabled",
             tags=wandb_tags,
             config={
+                "architecture": "ProTab",
                 "model": self.model.config.__dict__,
                 "trainer": self.config.__dict__,
                 "data": self.data_container.config.__dict__,
