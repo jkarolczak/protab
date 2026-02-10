@@ -7,7 +7,7 @@ from typing import (Literal,
 import pandas as pd
 
 TNamedData: TypeAlias = Literal[
-    "bng_ionosphere", "bng_pendigits", "codrna", "covertype", "poker_hand", "skin_segmentation", "statlog_shuttle"]
+    "bng_ionosphere", "bng_pendigits", "codrna", "covertype", "heloc", "skin_segmentation", "statlog_shuttle"]
 
 
 class DataSource(enum.Enum):
@@ -20,7 +20,7 @@ DATASET_SOURCE_ID = {
     "bng_pendigits": (DataSource.OPENML, 261),
     "codrna": (DataSource.OPENML, 351),
     "covertype": (DataSource.UCI, 31),
-    "poker_hand": (DataSource.OPENML, 1567),
+    "heloc": (DataSource.OPENML, 45023),
     "skin_segmentation": (DataSource.UCI, 229),
     "statlog_shuttle": (DataSource.UCI, 148),
 }

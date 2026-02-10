@@ -3,3 +3,4 @@ optuna
 pyyaml
 ucimlrepo
 wandb
+xgboost

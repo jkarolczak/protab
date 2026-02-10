@@ -31,7 +31,7 @@ class ProTabConfigFactory:
             classifier_hidden_dims: list[int],
             append_masks: bool = True,
             probabilistic: bool = True,
-            prototype_distance_metric: TDistanceMetric = "cosine"
+            prototype_distance_metric: TDistanceMetric = "l2"
     ) -> ProTabConfig:
         patching_config = PatchingConfig(
             n_features=n_features,

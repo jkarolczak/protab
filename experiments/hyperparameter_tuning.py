@@ -28,10 +28,21 @@ def objective(
     protab_config.patching.append_masks = True
     protab_config.encoder.input_dim = data_container.n_features * (2 if protab_config.patching.append_masks else 1)
 
+    # model architecture hyperparameters
     protab_config.encoder.hidden_dims = [int(dim_str.strip()) for dim_str in encoder_dims.split(",")]
-    prototype_dim = trial.suggest_categorical("protab_config.prototypes.prototype_dim", [2, 3, 5, 8])
+    prototype_dim = trial.suggest_categorical("protab_config.prototypes.prototype_dim", [3, 5, 8, 12, 16])
     protab_config.prototypes.prototype_dim = prototype_dim
     protab_config.encoder.output_dim = prototype_dim
+
+    n_prototypes = trial.suggest_categorical("protab_config.prototypes.n_prototypes", [32, 96, 128, 192, 256])
+    protab_config.prototypes.n_prototypes = n_prototypes
+    protab_config.classifier.input_dim = n_prototypes
+
+    n_patches = trial.suggest_categorical("protab_config.patching.n_patches", [8, 16, 24, 32])
+    protab_config.patching.n_patches = n_patches
+
+    protab_config.patching.patch_len = trial.suggest_int("protab_config.patching.patch_len",
+                                                         3, min(data_container.n_features // 2, 16))
 
     # training hyperparameters
     trainer_config.learning_rate = trial.suggest_float("trainer_config.learning_rate", 1e-5, 1e-2)

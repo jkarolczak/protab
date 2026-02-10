@@ -1,12 +1,13 @@
 import click
 
-from protab.data.named_data import (TNamedData, download)
+from protab.data.named_data import (download,
+                                    TNamedData)
 
 
 @click.command()
-@click.argument("names", type=click.UNPROCESSED, required=False)
+@click.argument("names", nargs=-1, type=click.Choice(TNamedData.__args__))
 def main(names: list[TNamedData] | None) -> None:
-    if names is None:
+    if len(names) == 0:
         names = list(TNamedData.__args__)
 
     for name in names:
