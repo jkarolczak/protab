@@ -7,7 +7,9 @@ from typing import (Literal,
 import pandas as pd
 
 TNamedData: TypeAlias = Literal[
-    "bng_ionosphere", "bng_pendigits", "codrna", "covertype", "heloc", "skin_segmentation", "statlog_shuttle"]
+    "bng_ionosphere", "bng_pendigits", "cardiotocography", "codrna", "covertype", "credit_card", "diabetes", "hcv", "heloc",
+    "ilpd", "skin_segmentation", "statlog_shuttle", "yeast"
+]
 
 
 class DataSource(enum.Enum):
@@ -18,11 +20,17 @@ class DataSource(enum.Enum):
 DATASET_SOURCE_ID = {
     "bng_ionosphere": (DataSource.OPENML, 59),
     "bng_pendigits": (DataSource.OPENML, 261),
+    "cardiotocography": (DataSource.UCI, 193),
     "codrna": (DataSource.OPENML, 351),
     "covertype": (DataSource.UCI, 31),
+    "credit_card": (DataSource.UCI, 350),
+    "diabetes": (DataSource.UCI, 329),
+    "hcv": (DataSource.UCI, 571),
     "heloc": (DataSource.OPENML, 45023),
+    "ilpd": (DataSource.UCI, 225),
     "skin_segmentation": (DataSource.UCI, 229),
     "statlog_shuttle": (DataSource.UCI, 148),
+    "yeast": (DataSource.UCI, 110),
 }
 
 
@@ -31,6 +39,11 @@ def get_uci(id_: int) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     dataset = fetch_ucirepo(id=id_)
     features, targets = dataset.data.features, dataset.data.targets
+
+    if targets.shape[1] > 1:
+        targets = targets.loc[:, "CLASS"]
+        targets = pd.DataFrame(targets).reset_index(drop=True)
+
     return features, targets
 
 
