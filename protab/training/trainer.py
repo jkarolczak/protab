@@ -70,6 +70,34 @@ class ProTabTrainer:
             prefetch_factor=2 if num_workers > 0 else None
         )
 
+    def _initialize_prototypes_kmeans(self, max_samples: int = 100000) -> None:
+        self.model.eval()
+        all_embeddings = []
+        total_collected = 0
+
+        with torch.no_grad():
+            for batch in self.train_dataloader:
+                anchor = batch[0].to(self.device)
+
+                patches = self.model.patching(anchor)
+                embeddings = self.model.encoder(patches)
+
+                flat_embeddings = embeddings.reshape(-1, embeddings.shape[-1])  # (B * P, E)
+
+                all_embeddings.append(flat_embeddings)
+                total_collected += flat_embeddings.shape[0]
+
+                if total_collected >= max_samples:
+                    break
+
+        full_embeddings = torch.cat(all_embeddings, dim=0)
+
+        if full_embeddings.shape[0] > max_samples:
+            indices = torch.randperm(full_embeddings.shape[0])[:max_samples]
+            full_embeddings = full_embeddings[indices]
+
+        self.model.prototypes.init_with_kmeans(full_embeddings)
+
     def _train_epoch(self) -> None:
         self.model.train()
         total_loss = 0.0
@@ -210,6 +238,8 @@ class ProTabTrainer:
                 "platform": platform_name
             }
         )
+
+        self._initialize_prototypes_kmeans()
 
         # Stage 1: probabilistic patching
         self._train_stage(self.config.epochs_stage_1, idx=1)

@@ -2,7 +2,6 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 @dataclass
@@ -12,6 +11,7 @@ class PatchingConfig:
     n_patches: int
     append_masks: bool = True
     probabilistic: bool = True
+    use_learnable_mask_token: bool = True
 
 
 class ProbabilisticPatching(nn.Module):
@@ -23,39 +23,24 @@ class ProbabilisticPatching(nn.Module):
         self.config = config
 
         self.weights = nn.Parameter(
-            torch.randn(self.config.n_patches, self.config.n_features, dtype=torch.float32)
+            torch.randn(self.config.n_patches, self.config.n_features, dtype=torch.float32) * 0.01
         )
 
-    def _probabilistic_masks(
-            self,
-            batch_size: int
-    ) -> torch.Tensor:
-        """Generates stochastic binary masks by sampling from learned feature weights.
-        """
+        usage_counts = torch.zeros(self.config.n_features, dtype=torch.float32)
+        with torch.no_grad():
+            for i in range(self.config.n_patches):
+                probs = 1.0 / (usage_counts + 0.1)
+                selected_indices = torch.multinomial(probs, num_samples=self.config.patch_len, replacement=False)
 
-        probs = F.softmax(self.weights, dim=-1)
+                self.weights[i, selected_indices] = 1.0
+                usage_counts[selected_indices] += 1.0
 
-        probs_expanded = probs.unsqueeze(0).expand(batch_size, -1, -1)
-        probs_flat = probs_expanded.reshape(-1, self.config.n_features)
-        indices = torch.multinomial(probs_flat, self.config.patch_len, replacement=False)
-        masks_flat = torch.zeros_like(probs_flat)
-        masks_flat.scatter_(dim=1, index=indices, src=torch.ones_like(masks_flat))
-        masks = masks_flat.view(batch_size, self.config.n_patches, self.config.n_features)
-
-        return masks
-
-    def _deterministic_masks(
-            self,
-            batch_size: int
-    ) -> torch.Tensor:
-        """Generates deterministic binary masks by selecting top-k features from learned weights.
-        """
-        topk_indices = self.weights.topk(self.config.patch_len, dim=-1).indices
-        mask_template = torch.zeros_like(self.weights)
-        mask_template.scatter_(dim=1, index=topk_indices, value=1.0)
-        masks = mask_template.unsqueeze(0).expand(batch_size, -1, -1)
-
-        return masks
+        if self.config.use_learnable_mask_token:
+            signs = torch.randint(0, 2, (self.config.n_features,), dtype=torch.float32) * 2 - 1
+            magnitudes = torch.rand(self.config.n_features, dtype=torch.float32) + 2.5
+            self.mask_token = nn.Parameter(signs * magnitudes)
+        else:
+            self.mask_token = None
 
     def forward(
             self,
@@ -65,13 +50,23 @@ class ProbabilisticPatching(nn.Module):
         assert n_features == self.config.n_features, \
             f"Input features ({n_features}) do not match config ({self.config.n_features})"
 
-        if self.config.probabilistic or self.training:
-            masks = self._probabilistic_masks(batch_size)
-        else:
-            masks = self._deterministic_masks(batch_size)
-        masks = masks.to(x.device)
+        logits = self.weights
+
+        _, topk_indices = torch.topk(logits, self.config.patch_len, dim=-1)
+        mask_hard = torch.zeros_like(logits)
+        mask_hard.scatter_(-1, topk_indices, 1.0)
+
+        mask_soft = torch.sigmoid(logits)
+
+        masks = mask_hard.detach() - mask_soft.detach() + mask_soft
+
+        masks = masks.unsqueeze(0).expand(batch_size, -1, -1)
 
         patches = x.unsqueeze(1) * masks
+
+        if self.config.use_learnable_mask_token and self.mask_token is not None:
+            token_part = self.mask_token.view(1, 1, -1) * (1 - masks)
+            patches = patches + token_part
 
         if self.config.append_masks:
             patches = torch.cat([patches, masks], dim=-1)

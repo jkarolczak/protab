@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from protab.models.mlp import MLPConfig, MLP
@@ -104,8 +105,9 @@ class ProTab(nn.Module):
             self,
             x: torch.Tensor
     ) -> torch.Tensor:
-        patches = self.patching(x)  # (B, P, I)
-        patches_embeddings = self.encoder(patches)  # (B, P, E)
+        patches = self.patching(x)
+        patches_embeddings = self.encoder(patches)
+        patches_embeddings = F.normalize(patches_embeddings, p=2, dim=-1)
         return patches_embeddings
 
     def forward(
@@ -113,10 +115,13 @@ class ProTab(nn.Module):
             x: torch.Tensor,
             return_embeddings: bool = False
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        patches_embeddings = self.embeddings(x)  # (B, P, E)
-        prototype_dist, patches_idcs = self.prototypes(patches_embeddings)  # (B, R), (B, R)
-        logits = self.classifier(prototype_dist)  # (B, 1, C)
-        logits = logits.squeeze(1)  # (B, C)
+        patches_embeddings = self.embeddings(x)
+        prototype_dist, patches_idcs = self.prototypes(patches_embeddings)
+
+        similarity = torch.exp(-prototype_dist)
+
+        logits = self.classifier(similarity)
+        logits = logits.squeeze(1)
         if return_embeddings:
             return logits, patches_embeddings
         return logits
@@ -128,7 +133,6 @@ class ProTab(nn.Module):
         device = self.prototypes.prototypes.device
         self.eval()
 
-        # Consistent dataloader to ensure absolute indices match the dataset
         worker_dataloader = torch.utils.data.DataLoader(
             dataloader.dataset,
             batch_size=int(dataloader.batch_size),
@@ -141,32 +145,30 @@ class ProTab(nn.Module):
         patch_dim = self.config.patching.n_features * (1 + self.config.patching.append_masks)
         n_patches_per_sample = self.config.patching.n_patches
 
-        # Initialize buffers
         global_min_dists = torch.full((n_protos,), float("inf"), device=device)
         global_nearest_idcs = torch.full((n_protos, 2), -1, device=device, dtype=torch.long)
         best_patches = torch.zeros((n_protos, patch_dim), device=device)
-        best_prototype_vectors = self.prototypes.prototypes.data.clone()
 
-        p = self.prototypes.prototypes.data
+        p = F.normalize(self.prototypes.prototypes.data, p=2, dim=-1)
         p_sq = torch.sum(p ** 2, dim=-1)
+
+        best_prototype_vectors = p.clone()
 
         with torch.no_grad():
             for batch_idx, (x_batch, *_) in enumerate(worker_dataloader):
                 x_batch = x_batch.to(device).to(torch.float32)
 
-                # Extract patches and embeddings
-                patches = self.patching(x_batch)  # (B, P, I)
-                z = self.encoder(patches)  # (B, P, E)
+                patches = self.patching(x_batch)
+                z = self.encoder(patches)
+                z = F.normalize(z, p=2, dim=-1)
 
                 B, P, E = z.shape
-                z_flat = z.view(-1, E)  # (B * P, E)
+                z_flat = z.view(-1, E)
                 p_flat = patches.view(-1, patch_dim)
 
-                # Distance calculation
-                z_sq = torch.sum(z_flat ** 2, dim=-1, keepdim=True)  # (B * P, 1)
+                z_sq = torch.sum(z_flat ** 2, dim=-1, keepdim=True)
                 distances_sq = z_sq + p_sq - 2 * torch.matmul(z_flat, p.t())
 
-                # Handle potential precision issues (force non-negative)
                 distances = torch.sqrt(torch.clamp(distances_sq, min=1e-8))  # (B * P, n_protos)
 
                 # Find batch-wise nearest neighbors
