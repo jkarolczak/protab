@@ -61,8 +61,8 @@ class Prototypes(nn.Module):
         distances = self.compute_distance_matrix(x)
 
         prototype_dist, patches_idcs = torch.topk(distances, dim=-2, k=1, largest=False)
-        prototype_dist = prototype_dist.squeeze(-1)
-        patches_idcs = patches_idcs.squeeze(-1)
+        prototype_dist = prototype_dist.squeeze(-2)
+        patches_idcs = patches_idcs.squeeze(-2)
 
         return prototype_dist, patches_idcs
 

@@ -35,10 +35,12 @@ class CompoundLoss(nn.Module):
         super().__init__()
         self.config = config
 
-        if self.config.ce_pos_weight is not None:
-            ce_pos_weight = torch.tensor(self.config.ce_pos_weight)
+        if self.config.ce_pos_weight is None:
+            weight = None
+        else:
+            weight = torch.tensor(self.config.ce_pos_weight)
 
-        self.cross_entropy_loss = nn.BCEWithLogitsLoss(pos_weight=ce_pos_weight)
+        self.cross_entropy_loss = nn.CrossEntropyLoss(weight=weight)
         self.triplet_margin_loss = nn.TripletMarginLoss(margin=self.config.triplet_margin, p=self.config.triplet_p)
 
     def to(
@@ -60,9 +62,12 @@ class CompoundLoss(nn.Module):
             patching_weights: torch.Tensor,
             prototypes_weights: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        if logits.max() > 1.0 or logits.min() < 0.0:
-            logits = F.softmax(logits, dim=-1)
-        ce = self.cross_entropy_loss(logits, targets)
+        if targets.ndim > 1 and targets.size(1) > 1:
+            target_indices = targets.argmax(dim=1)
+        else:
+            target_indices = targets.view(-1).long()
+
+        ce = self.cross_entropy_loss(logits, target_indices)
         triplet = self.triplet_margin_loss(anchor_embeddings, positive_embeddings, negative_embeddings)
         patch_diversity = diversity(patching_weights)
         proto_diversity = diversity(prototypes_weights)

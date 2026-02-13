@@ -19,9 +19,9 @@ trainer:
     triplet_margin: 1.0
     triplet_p: 2
     w_ce: 2.00
-    w_triplet: 1.50
-    w_patch_diversity: 5.50
-    w_proto_diversity: 3.50
+    w_triplet: 1.25
+    w_patch_diversity: 2.00
+    w_proto_diversity: 1.00
   wandb_config:
     project: "ProTab"
     entity: "jacek-karolczak"
