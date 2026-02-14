@@ -1,14 +1,21 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import (TypeAlias,
+                    Literal)
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from protab.models.mlp import MLPConfig, MLP
-from protab.nn.patching import PatchingConfig, ProbabilisticPatching
+from protab.models.mlp import (MLPConfig,
+                               MLP)
+from protab.nn.patching import (PatchingConfig,
+                                ProbabilisticPatching)
 from protab.nn.prototypes import (PrototypeConfig,
-                                  TDistanceMetric, Prototypes)
+                                  TDistanceMetric,
+                                  Prototypes)
+
+TSparseProjection: TypeAlias = Literal["entmax", "sparsemax", "none"]
 
 
 @dataclass
@@ -17,6 +24,7 @@ class ProTabConfig:
     encoder: MLPConfig
     prototypes: PrototypeConfig
     classifier: MLPConfig
+    sparse_projection: TSparseProjection = "entmax"
 
 
 class ProTabConfigFactory:
@@ -32,7 +40,8 @@ class ProTabConfigFactory:
             classifier_hidden_dims: list[int],
             append_masks: bool = True,
             probabilistic: bool = True,
-            prototype_distance_metric: TDistanceMetric = "l2"
+            prototype_distance_metric: TDistanceMetric = "l2",
+            sparse_projection: TSparseProjection = "entmax"
     ) -> ProTabConfig:
         patching_config = PatchingConfig(
             n_features=n_features,
@@ -65,7 +74,8 @@ class ProTabConfigFactory:
             patching=patching_config,
             encoder=encoder_config,
             prototypes=prototypes_config,
-            classifier=classifier_config
+            classifier=classifier_config,
+            sparse_projection=sparse_projection
         )
 
     @staticmethod
@@ -84,7 +94,8 @@ class ProTabConfigFactory:
             patching=patching_config,
             encoder=encoder_config,
             prototypes=prototypes_config,
-            classifier=classifier_config
+            classifier=classifier_config,
+            sparse_projection=config_dict.get("sparse_projection", "entmax")
         )
 
 
@@ -118,7 +129,17 @@ class ProTab(nn.Module):
         patches_embeddings = self.embeddings(x)
         prototype_dist, patches_idcs = self.prototypes(patches_embeddings)
 
-        similarity = torch.exp(-prototype_dist)
+        match self.config.sparse_projection:
+            case "entmax":
+                from entmax import entmax15
+                similarity = entmax15(-prototype_dist, dim=-1)
+
+            case "sparsemax":
+                from entmax import sparsemax
+                similarity = sparsemax(-prototype_dist, dim=-1)
+
+            case _:
+                similarity = torch.exp(-prototype_dist)
 
         logits = self.classifier(similarity)
         logits = logits.squeeze(1)

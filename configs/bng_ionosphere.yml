@@ -10,15 +10,17 @@ model:
   append_masks: true
   probabilistic: true
   prototype_distance_metric: "l2"
+  sparse_projection: "sparsemax"
 trainer:
   batch_size: 256
   epochs_stage_1: 20
   epochs_stage_2: 5
   epochs_stage_3: 1
   criterion_config:
+    classification_loss: "focal"
     triplet_margin: 1.0
     triplet_p: 2
-    w_ce: 2.00
+    w_cls: 2.00
     w_triplet: 1.25
     w_patch_diversity: 2.00
     w_proto_diversity: 1.00

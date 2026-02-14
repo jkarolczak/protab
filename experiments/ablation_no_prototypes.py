@@ -8,7 +8,7 @@ if __name__ == "__main__":
     trainer_config.epochs_stage_2 = 0
     trainer_config.epochs_stage_3 = 0
 
-    trainer_config.criterion_config.w_ce = 1.0
+    trainer_config.criterion_config.w_cls = 1.0
     trainer_config.criterion_config.w_triplet = 0.0
     trainer_config.criterion_config.w_patch_diversity = 0.0
     trainer_config.criterion_config.w_proto_diversity = 0.0

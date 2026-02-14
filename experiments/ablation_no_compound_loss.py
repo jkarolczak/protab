@@ -11,7 +11,7 @@ from protab.training.trainer import ProTabTrainer
 def main(dataset_name: TNamedData) -> None:
     data_container, protab_config, trainer_config = read_data_and_configs(dataset_name)
 
-    trainer_config.criterion_config.w_ce = 1.0
+    trainer_config.criterion_config.w_cls = 1.0
     trainer_config.criterion_config.w_triplet = 0.0
     trainer_config.criterion_config.w_patch_diversity = 0.0
     trainer_config.criterion_config.w_proto_diversity = 0.0

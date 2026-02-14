@@ -1,15 +1,20 @@
 from dataclasses import dataclass
+from typing import (Literal,
+                    TypeAlias)
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+TClassificationLoss: TypeAlias = Literal["cross_entropy", "focal"]
+
 
 @dataclass
 class CompoundLossConfig:
+    classification_loss: TClassificationLoss = "focal"
     triplet_margin: float = 1.0
     triplet_p: int = 2
-    w_ce: float = 1.0
+    w_cls: float = 1.0
     w_triplet: float = 1.0
     w_patch_diversity: float = 1.0
     w_proto_diversity: float = 1.0
@@ -27,6 +32,28 @@ def diversity(
     return loss
 
 
+class MultiClassFocalLoss(nn.Module):
+    def __init__(self, weight: torch.Tensor | None = None, gamma: float = 2.0,
+                 reduction: Literal["mean", "sum", "none"] = "mean") -> None:
+        super().__init__()
+        self.weight = weight
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        ce_loss = F.cross_entropy(inputs, targets, weight=self.weight, reduction='none')
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
+
+        match self.reduction:
+            case "mean":
+                return focal_loss.mean()
+            case "sum":
+                return focal_loss.sum()
+            case _:
+                return focal_loss
+
+
 class CompoundLoss(nn.Module):
     def __init__(
             self,
@@ -40,14 +67,17 @@ class CompoundLoss(nn.Module):
         else:
             weight = torch.tensor(self.config.ce_pos_weight)
 
-        self.cross_entropy_loss = nn.CrossEntropyLoss(weight=weight)
+        if self.config.classification_loss == "cross_entropy":
+            self.classification_loss = nn.CrossEntropyLoss(weight=weight)
+        elif self.config.classification_loss == "focal":
+            self.classification_loss = MultiClassFocalLoss(weight=weight)
         self.triplet_margin_loss = nn.TripletMarginLoss(margin=self.config.triplet_margin, p=self.config.triplet_p)
 
     def to(
             self,
             device: str | torch.device
     ) -> 'CompoundLoss':
-        self.cross_entropy_loss.to(device)
+        self.classification_loss.to(device)
         self.triplet_margin_loss.to(device)
 
         return self
@@ -67,18 +97,18 @@ class CompoundLoss(nn.Module):
         else:
             target_indices = targets.view(-1).long()
 
-        ce = self.cross_entropy_loss(logits, target_indices)
+        cls_loss = self.classification_loss(logits, target_indices)
         triplet = self.triplet_margin_loss(anchor_embeddings, positive_embeddings, negative_embeddings)
         patch_diversity = diversity(patching_weights)
         proto_diversity = diversity(prototypes_weights)
 
-        w_ce = self.config.w_ce * ce
+        w_cls = self.config.w_cls * cls_loss
         w_triplet = self.config.w_triplet * triplet
         w_patch_diversity = self.config.w_patch_diversity * patch_diversity
         w_proto_diversity = self.config.w_proto_diversity * proto_diversity
 
-        total_loss = w_ce + w_triplet + w_patch_diversity + w_proto_diversity
-        return total_loss, ce, triplet, patch_diversity, proto_diversity
+        total_loss = w_cls + w_triplet + w_patch_diversity + w_proto_diversity
+        return total_loss, cls_loss, triplet, patch_diversity, proto_diversity
 
     def forward(
             self,

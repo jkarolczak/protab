@@ -100,8 +100,12 @@ cython_debug/
 
 # data
 data/*
-
+.csv
+.xlsx
 *_results.txt
 
 # wandb
 wandb/
+
+# MacOS
+.DS_Store
