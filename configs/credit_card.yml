@@ -17,7 +17,7 @@ trainer:
   epochs_stage_2: 5
   epochs_stage_3: 1
   criterion_config:
-    classification_loss: "focal"
+    classification_loss: "cross_entropy"
     triplet_margin: 1.0
     triplet_p: 2
     w_cls: 2.00
