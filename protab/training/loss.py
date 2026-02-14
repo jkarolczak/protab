@@ -36,12 +36,12 @@ class MultiClassFocalLoss(nn.Module):
     def __init__(self, weight: torch.Tensor | None = None, gamma: float = 2.0,
                  reduction: Literal["mean", "sum", "none"] = "mean") -> None:
         super().__init__()
-        self.weight = weight
+        self.register_buffer("weight", weight)
         self.gamma = gamma
         self.reduction = reduction
 
     def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        ce_loss = F.cross_entropy(inputs, targets, weight=self.weight, reduction='none')
+        ce_loss = F.cross_entropy(inputs, targets, weight=self.weight, reduction="none")
         pt = torch.exp(-ce_loss)
         focal_loss = ((1 - pt) ** self.gamma) * ce_loss
 
