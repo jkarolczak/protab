@@ -10,7 +10,7 @@ model:
   append_masks: true
   probabilistic: true
   prototype_distance_metric: "l2"
-  sparse_projection: "sparsemax"
+  sparse_projection: "none"
 trainer:
   batch_size: 256
   epochs_stage_1: 20
