@@ -1,6 +1,7 @@
 from dataclasses import (dataclass,
                          field)
 
+import torch
 from torch import nn
 
 
@@ -27,5 +28,18 @@ class MLP(nn.Module):
                 layers.append(self.config.activation())
         self.network = nn.Sequential(*layers)
 
-    def forward(self, x):
+        self.apply(MLP._init_weights)
+
+    @staticmethod
+    def _init_weights(m: nn.Module) -> None:
+        if isinstance(m, nn.Linear):
+            nn.init.kaiming_normal_(
+                m.weight,
+                mode="fan_out",
+                nonlinearity="relu"
+            )
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.network(x)
