@@ -13,7 +13,7 @@ model:
   sparse_projection: "none"
 trainer:
   batch_size: 256
-  epochs_stage_1: 10
+  epochs_stage_1: 20
   epochs_stage_2: 5
   epochs_stage_3: 1
   criterion_config:
