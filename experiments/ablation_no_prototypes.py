@@ -1,4 +1,5 @@
 import click
+import wandb
 
 from protab.data.named_data import TNamedBoolData
 from protab.models.protab import ProTab
@@ -33,7 +34,18 @@ def main(dataset_name: TNamedBoolData, device: str) -> None:
     protab = ProTab(model_config)
     trainer = ProTabTrainer(data_container, protab, trainer_config)
 
-    trainer.train(wandb_tags=["ablation", "no_prototypes"])
+    trainer.train(wandb_tags=["ablation", "no_prototypes"], wandb_finish=False)
+
+    best_run_summary = best_run.summary
+    current_run_summary = wandb.run.summary
+    metric_dict = {}
+    for metric in ["eval_accuracy", "eval_balanced_accuracy", "eval_cohen_kappa", "eval_f1_score", "eval_precision"]:
+        best_metric = best_run_summary[metric]
+        current_metric = current_run_summary[metric]
+        diff = current_metric - best_metric
+        metric_dict[f"{metric}_diff"] = diff
+
+    wandb.finish()
 
 
 if __name__ == "__main__":
