@@ -1,16 +1,16 @@
 import click
 import wandb
 
-from protab.data.named_data import TNamedBoolData
+from protab.data.named_data import TNamedData
 from protab.models.protab import ProTab
 from protab.training.config import fetch_best_run
 from protab.training.trainer import ProTabTrainer
 
 
 @click.command()
-@click.argument("dataset_name", type=click.Choice(TNamedBoolData.__args__))
+@click.argument("dataset_name", type=click.Choice(TNamedData.__args__))
 @click.option("--device", type=str, default="cpu")
-def main(dataset_name: TNamedBoolData, device: str) -> None:
+def main(dataset_name: TNamedData, device: str) -> None:
     best_run, data_container, model_config, trainer_config, _ = fetch_best_run(
         dataset_name, ["hyperparameter_tuning"], load_model=False
     )
