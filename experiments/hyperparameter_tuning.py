@@ -4,6 +4,7 @@ import optuna
 from protab.data.named_data import TNamedData
 from protab.models.protab import ProTab
 from protab.training.config import read_data_and_configs
+from protab.training.reproducibility import set_seed
 from protab.training.trainer import ProTabTrainer
 
 
@@ -13,6 +14,8 @@ def objective(
         device: str,
         log_wandb: bool
 ) -> float:
+    set_seed()
+    
     data_container, protab_config, trainer_config = read_data_and_configs(dataset_name)
     trainer_config.device = device
     trainer_config.wandb_config.active = log_wandb

@@ -3,6 +3,8 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 
+from protab.training.reproducibility import set_seed
+
 
 @dataclass
 class PatchingConfig:
@@ -20,6 +22,7 @@ class ProbabilisticPatching(nn.Module):
             config: PatchingConfig
     ) -> None:
         super().__init__()
+        set_seed()
         self.config = config
 
         self.weights = nn.Parameter(

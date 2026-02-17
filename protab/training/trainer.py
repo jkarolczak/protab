@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 import torch
+import torchmetrics.functional as tmf
 import wandb
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
@@ -15,6 +16,7 @@ from protab.models.protab import ProTab
 from protab.training.log import WandbConfig
 from protab.training.loss import (CompoundLoss,
                                   CompoundLossConfig)
+from protab.training.reproducibility import set_seed
 from protab.training.utils import SimpleCounter
 
 
@@ -39,6 +41,7 @@ class ProTabTrainer:
             model: ProTab,
             config: ProTabTrainerConfig
     ) -> None:
+        set_seed()
         self.config = config
         self.device = torch.device(self.config.device)
         self.data_container = data_container
@@ -192,8 +195,6 @@ class ProTabTrainer:
         labels_all = torch.cat(labels_list, dim=0)
         labels_all = torch.argmax(labels_all, dim=1)
 
-        import torchmetrics.functional as tmf
-
         num_classes = logits_all.shape[-1]
         task = "multiclass"
 
@@ -218,7 +219,8 @@ class ProTabTrainer:
     def train(
             self,
             return_score: bool = False,
-            wandb_tags: Sequence[str] | None = None
+            wandb_tags: Sequence[str] | None = None,
+            wandb_finish: bool = True
     ) -> None | float:
         import wandb
 
@@ -291,7 +293,8 @@ class ProTabTrainer:
             torch.save(self.model.state_dict(), model_path)
             wandb.save(model_path, policy="now")
 
-        wandb.finish()
+        if wandb_finish:
+            wandb.finish()
 
         if return_score and self.config.run_validation:
             return metrics["balanced_accuracy"]

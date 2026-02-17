@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from protab.training.reproducibility import set_seed
+
 TDistanceMetric: TypeAlias = Literal["cosine", "dot", "l1", "l2"]
 
 
@@ -21,6 +23,7 @@ class Prototypes(nn.Module):
             config: PrototypeConfig
     ) -> None:
         super().__init__()
+        set_seed()
         self.config = config
 
         self.prototypes = nn.Parameter(

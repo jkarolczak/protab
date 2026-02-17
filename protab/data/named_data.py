@@ -6,10 +6,14 @@ from typing import (Literal,
 
 import pandas as pd
 
+from protab.training.reproducibility import set_seed
+
 TNamedData: TypeAlias = Literal[
-    "bng_ionosphere", "bng_pendigits", "cardiotocography", "codrna", "covertype", "credit_card", "diabetes", "hcv", "heloc",
-    "ilpd", "skin_segmentation", "statlog_shuttle", "yeast"
+    "bng_ionosphere", "bng_pendigits", "codrna", "covertype", "credit_card", "diabetes", "heloc",
+    "statlog_shuttle", "yeast"
 ]
+
+TNamedBoolData: TypeAlias = Literal["bng_ionosphere", "codrna", "credit_card", "diabetes", "heloc", "yeast"]
 
 
 class DataSource(enum.Enum):
@@ -20,15 +24,11 @@ class DataSource(enum.Enum):
 DATASET_SOURCE_ID = {
     "bng_ionosphere": (DataSource.OPENML, 59),
     "bng_pendigits": (DataSource.OPENML, 261),
-    "cardiotocography": (DataSource.UCI, 193),
     "codrna": (DataSource.OPENML, 351),
     "covertype": (DataSource.UCI, 31),
     "credit_card": (DataSource.UCI, 350),
     "diabetes": (DataSource.UCI, 329),
-    "hcv": (DataSource.UCI, 571),
     "heloc": (DataSource.OPENML, 45023),
-    "ilpd": (DataSource.UCI, 225),
-    "skin_segmentation": (DataSource.UCI, 229),
     "statlog_shuttle": (DataSource.UCI, 148),
     "yeast": (DataSource.UCI, 110),
 }
@@ -68,7 +68,7 @@ def stratified_train_eval_test_split(
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     from sklearn.model_selection import train_test_split
 
-    random_state = os.environ.get("PROTAB_RANDOM_SEED", 42)
+    random_state = set_seed()
 
     if isinstance(targets.dtypes.iloc[0], pd.SparseDtype):
         targets = pd.DataFrame(targets.to_numpy(), columns=targets.columns)

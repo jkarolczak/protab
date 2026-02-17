@@ -4,6 +4,8 @@ from dataclasses import (dataclass,
 import torch
 from torch import nn
 
+from protab.training.reproducibility import set_seed
+
 
 @dataclass
 class MLPConfig:
@@ -19,6 +21,7 @@ class MLP(nn.Module):
             config: MLPConfig
     ) -> None:
         super().__init__()
+        set_seed()
         self.config = config
         layers = []
         all_dims = [self.config.input_dim] + self.config.hidden_dims + [self.config.output_dim]

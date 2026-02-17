@@ -235,6 +235,26 @@ class DataContainer:
     def to_triplet_datasets(self) -> tuple[TripletDataset, TripletDataset, TripletDataset]:
         return self._create_dataset_bundle(TripletDataset)
 
+    def scale(self, df: pd.DataFrame) -> tuple[torch.Tensor, torch.Tensor]:
+        df = df.copy()
+
+        for col, mapping in self._mappings.items():
+            if col in df.columns:
+                df[col] = df[col].map(mapping)
+
+        for col, stats in self._norm_stats.items():
+            if col in df.columns:
+                df[col] = (df[col] - stats["mean"]) / stats["std"]
+
+        df_ordered = df.reindex(columns=self.x_train.columns)
+
+        values = torch.tensor(df_ordered.values, dtype=torch.float32)
+
+        mask = ~torch.isnan(values)
+        values = torch.nan_to_num(values, nan=0.0)
+
+        return values, mask.float()
+
     def descale(self, tensor: torch.Tensor) -> pd.DataFrame:
         """
         Converts a tensor (e.g., prototypes/patches) back to original feature scales.

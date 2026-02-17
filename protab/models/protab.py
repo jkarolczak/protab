@@ -14,6 +14,7 @@ from protab.nn.patching import (PatchingConfig,
 from protab.nn.prototypes import (PrototypeConfig,
                                   TDistanceMetric,
                                   Prototypes)
+from protab.training.reproducibility import set_seed
 
 TSparseProjection: TypeAlias = Literal["entmax", "sparsemax", "none"]
 
@@ -105,6 +106,7 @@ class ProTab(nn.Module):
             config: ProTabConfig
     ) -> None:
         super().__init__()
+        set_seed()
         self.config = config
 
         self.patching = ProbabilisticPatching(self.config.patching)
