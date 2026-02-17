@@ -32,6 +32,8 @@ def main(dataset_name: TNamedData, device: str) -> None:
         diff = current_metric - best_metric
         metric_dict[f"{metric}_diff"] = diff
 
+    wandb.log(metric_dict)
+
     wandb.finish()
 
 
