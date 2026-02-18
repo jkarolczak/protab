@@ -15,7 +15,7 @@ def objective(
         log_wandb: bool
 ) -> float:
     set_seed()
-    
+
     data_container, protab_config, trainer_config = read_data_and_configs(dataset_name)
     trainer_config.device = device
     trainer_config.wandb_config.active = log_wandb
@@ -56,7 +56,7 @@ def objective(
     protab = ProTab(protab_config)
     trainer = ProTabTrainer(data_container, protab, trainer_config)
 
-    final_balanced_accuracy = trainer.train(return_score=True, wandb_tags=["hyperparameter_tuning"])
+    final_balanced_accuracy = trainer.train(return_score=True, wandb_tags=["hyperparameter_tuning"])["balanced_accuracy"]
     return final_balanced_accuracy
 
 

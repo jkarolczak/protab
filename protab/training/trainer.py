@@ -246,14 +246,14 @@ class ProTabTrainer:
         # Stage 1: probabilistic patching
         self._train_stage(self.config.epochs_stage_1, idx=1)
         if self.config.run_validation:
-            self._validation(idx=1)
+            metrics = self._validation(idx=1)
 
         # Stage 2: deterministic patching, artificial prototypes
         if self.config.epochs_stage_2 > 0:
             self.model.patching.config.probabilistic = False
             self._train_stage(self.config.epochs_stage_2, idx=2)
             if self.config.run_validation:
-                self._validation(idx=2)
+                metrics = self._validation(idx=2)
 
         # Stage 3: deterministic patching, real-world prototypes, classification fine-tuning
         if self.config.epochs_stage_3 > 0:
@@ -297,5 +297,5 @@ class ProTabTrainer:
             wandb.finish()
 
         if return_score and self.config.run_validation:
-            return metrics["balanced_accuracy"]
+            return metrics
         return None

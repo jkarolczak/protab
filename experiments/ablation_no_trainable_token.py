@@ -21,17 +21,15 @@ def main(dataset_name: TNamedData, device: str) -> None:
     protab = ProTab(model_config)
     trainer = ProTabTrainer(data_container, protab, trainer_config)
 
-    trainer.train(wandb_tags=["ablation", "no_trainable_token"], wandb_finish=False)
-
+    current_run_summary = trainer.train(wandb_tags=["ablation", "no_trainable_token"], wandb_finish=False, return_score=True)
     best_run_summary = best_run.summary
-    current_run_summary = wandb.run.summary
     metric_dict = {}
-    for metric in ["eval_accuracy", "eval_balanced_accuracy", "eval_cohen_kappa", "eval_f1_score", "eval_precision"]:
-        best_metric = best_run_summary[metric]
+    for metric in ["accuracy", "balanced_accuracy", "cohen_kappa", "f1_score", "precision"]:
+        best_metric = best_run_summary[f"eval_{metric}"]
         current_metric = current_run_summary[metric]
         diff = current_metric - best_metric
         metric_dict[f"{metric}_diff"] = diff
-        
+
     wandb.log(metric_dict)
 
     wandb.finish()
