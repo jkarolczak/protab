@@ -99,13 +99,15 @@ cython_debug/
 .streamlit/secrets.toml
 
 # data
-data/*
+data/
+results/
 .csv
 .xlsx
 *_results.txt
 
 # wandb
 wandb/
+artifacts/
 
 # MacOS
 .DS_Store

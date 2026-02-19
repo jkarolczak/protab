@@ -50,7 +50,7 @@ def main(dataset_name: TNamedBoolData, device: str, batch_size: int) -> None:
     wandb.init(
         project="ProTab",
         entity="jacek-karolczak",
-        tags=["prototypes_evaluation"],
+        tags=["prototypes_evaluation", "latex"],
         name=f"{dataset_name}_prototypes_analysis",
         config={
             "architecture": "ProTab",

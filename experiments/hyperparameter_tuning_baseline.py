@@ -143,7 +143,6 @@ def main(dataset_name: TNamedData, model: str, n_trials: int, log_wandb: bool) -
     for m in models_to_run:
         study = optuna.create_study(direction="maximize")
         study.optimize(lambda t: objective(t, dataset_name, m, log_wandb), n_trials=n_trials, timeout=3 * 24 * 60 * 60)
-        print(f"Best {m}: {study.best_value} with {study.best_params}")
 
 
 if __name__ == "__main__":
