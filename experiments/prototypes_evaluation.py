@@ -1,57 +1,197 @@
-import glob
-import json
-import os
 import platform
 
 import click
+import cmcrameri.cm as cmc
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+import torch.nn.functional as F
 import wandb
-from torch.utils.data import DataLoader, TensorDataset
-from tqdm.auto import tqdm
+from matplotlib.lines import Line2D
+from sklearn.manifold import TSNE
 
-from protab.data.named_data import TNamedBoolData
+from protab.data.named_data import TNamedData
 from protab.training.config import fetch_best_run
 
-
-def fetch_logged_table(run, table_name: str):
-    artifacts = run.logged_artifacts()
-    target_artifact = None
-    for artifact in artifacts:
-        if table_name in artifact.name and artifact.type == "run_table":
-            target_artifact = artifact
-            break
-
-    if target_artifact is None:
-        raise ValueError(f"Table '{table_name}' not found in run artifacts")
-
-    dir_path = target_artifact.download()
-    json_files = glob.glob(os.path.join(dir_path, "*.table.json"))
-
-    with open(json_files[0], "r") as f:
-        table_dict = json.load(f)
-
-    df = pd.DataFrame(data=table_dict["data"], columns=table_dict["columns"])
-    return df
+MAX_PATCHES = 5000
 
 
 @click.command()
-@click.argument("dataset_name", type=click.Choice(TNamedBoolData.__args__))
+@click.argument("dataset_name", type=click.Choice(TNamedData.__args__))
 @click.option("--device", type=str, default="cpu")
-@click.option("--batch-size", type=int, default=256)
-def main(dataset_name: TNamedBoolData, device: str, batch_size: int) -> None:
-    best_run, data_container, model_config, trainer_config, model = fetch_best_run(
+def main(dataset_name: TNamedData, device: str) -> None:
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Computer Modern Roman", "Times New Roman", "serif"],
+        "font.size": 10,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+        "figure.dpi": 800,
+        "savefig.dpi": 800,
+    })
+
+    best_run, data_container, model_config, trainer_config, protab = fetch_best_run(
         dataset_name, ["hyperparameter_tuning"], load_model=True
     )
+
+    protab = protab.to(device)
+    protab.eval()
+
+    _, _, test_dataset = data_container.to_simple_datasets()
+    dataloader = torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=trainer_config.batch_size,
+        shuffle=False
+    )
+
+    patch_embeddings_list = []
+    labels_list = []
+    ranks_list = []
+
+    with torch.no_grad():
+        for x, y, *_ in dataloader:
+            x = x.to(device).to(torch.float32)
+            y = y.to(device)
+
+            logits, patches_embeddings = protab(x, return_embeddings=True)
+            prototype_dist, patches_idcs = protab.prototypes(patches_embeddings)
+
+            ranks = torch.argsort(torch.argsort(prototype_dist, dim=1), dim=1) + 1
+            ranks_list.append(ranks.cpu())
+
+            if y.dim() > 1 and y.shape[1] > 1:
+                y = torch.argmax(y, dim=1)
+
+            B, P_cnt, E = patches_embeddings.shape
+            active_mask = torch.zeros((B, P_cnt), dtype=torch.bool, device=device)
+            active_mask.scatter_(1, patches_idcs, True)
+
+            active_patches = patches_embeddings[active_mask]
+            active_labels = y.unsqueeze(1).expand(B, P_cnt)[active_mask]
+
+            patch_embeddings_list.append(active_patches.cpu())
+            labels_list.append(active_labels.cpu())
+
+    all_ranks = torch.cat(ranks_list, dim=0)
+
+    best_ranks_per_proto = torch.min(all_ranks, dim=0).values
+
+    best_rank_distribution = []
+    for r in range(1, all_ranks.shape[1] + 1):
+        count = (best_ranks_per_proto == r).sum().item()
+        best_rank_distribution.append({"rank": r, "prototypes_count": count})
+
+    w_cls = protab.classifier.network[0].weight.data.cpu()
+    if w_cls.shape[0] == 1:
+        assigned_classes = (w_cls[0] > 0).long()
+    else:
+        assigned_classes = torch.argmax(w_cls, dim=0)
+
+    all_patches_flat = torch.cat(patch_embeddings_list, dim=0)
+    all_labels_flat = torch.cat(labels_list, dim=0)
+
+    proto_emb = F.normalize(protab.prototypes.prototypes.data, p=2, dim=-1).cpu()
+
+    dists = torch.cdist(proto_emb, all_patches_flat)
+
+    k_vals = [3, 5, 7, 9, 11, 13, 15]
+    purity_records = []
+
+    valid_k_vals = [k for k in k_vals if k <= all_patches_flat.shape[0]]
+
+    for j in range(all_ranks.shape[1]):
+        proto_dists = dists[j]
+        top_indices = torch.topk(proto_dists, k=max(valid_k_vals), largest=False).indices
+        top_labels = all_labels_flat[top_indices]
+
+        assigned_c = assigned_classes[j].item()
+        record = {"prototype_idx": j, "assigned_class": assigned_c}
+        for k in valid_k_vals:
+            purity = (top_labels[:k] == assigned_c).float().mean().item()
+            record[f"purity_{k}"] = purity
+        purity_records.append(record)
+
+    if all_patches_flat.shape[0] > MAX_PATCHES:
+        indices = torch.randperm(all_patches_flat.shape[0])[:MAX_PATCHES]
+        sub_patches = all_patches_flat[indices]
+        sub_labels = all_labels_flat[indices]
+    else:
+        sub_patches = all_patches_flat
+        sub_labels = all_labels_flat
+
+    combined_emb = torch.cat([sub_patches, proto_emb], dim=0).numpy()
+
+    tsne = TSNE(n_components=2, random_state=42)
+    tsne_emb = tsne.fit_transform(combined_emb)
+
+    patch_tsne = tsne_emb[:sub_patches.shape[0]]
+    proto_tsne = tsne_emb[sub_patches.shape[0]:]
+
+    tsne_records = []
+    for i in range(patch_tsne.shape[0]):
+        tsne_records.append(
+            {"type": "patch", "x": float(patch_tsne[i, 0]), "y": float(patch_tsne[i, 1]), "class": int(sub_labels[i].item())})
+    for i in range(proto_tsne.shape[0]):
+        tsne_records.append({"type": "prototype", "x": float(proto_tsne[i, 0]), "y": float(proto_tsne[i, 1]),
+                             "class": int(assigned_classes[i].item())})
+
+    df_rank = pd.DataFrame(best_rank_distribution)
+    fig_hist, ax_hist = plt.subplots(figsize=(4.8, 3.2), dpi=300)
+    ax_hist.bar(df_rank["rank"], df_rank["prototypes_count"], color="#666666", edgecolor="black")
+    ax_hist.set_xlabel("Best Rank Achieved")
+    ax_hist.set_ylabel("Number of Prototypes")
+    ax_hist.grid(axis="y", linestyle="--", alpha=0.7)
+    plt.tight_layout()
+
+    df_tsne = pd.DataFrame(tsne_records)
+    fig_tsne, ax_tsne = plt.subplots(figsize=(4, 4), dpi=800)
+
+    cmap = cmc.batlowS
+
+    classes = sorted(df_tsne["class"].unique())
+
+    # Sample evenly across the colormap to maximize contrast for categorical data,
+    # rather than picking the first adjacent (and therefore visually similar) colors.
+    colors = cmap(np.linspace(0, 1, len(classes)))
+
+    patches = df_tsne[df_tsne["type"] == "patch"]
+    for idx, cls in enumerate(classes):
+        subset = patches[patches["class"] == cls]
+        ax_tsne.scatter(subset["x"], subset["y"], s=10, alpha=0.5, label=f"class {int(cls)}", color=colors[idx])
+
+    protos = df_tsne[df_tsne["type"] == "prototype"]
+    for idx, cls in enumerate(classes):
+        subset = protos[protos["class"] == cls]
+        ax_tsne.scatter(subset["x"], subset["y"], s=150, marker="*", edgecolor="black", linewidth=1.0, color=colors[idx])
+
+    ax_tsne.set_xticks([])
+    ax_tsne.set_yticks([])
+
+    handles, labels = ax_tsne.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+
+    shape_handles = [
+        Line2D([0], [0], marker="o", color="w", label="Patch", markerfacecolor="gray", markersize=4, alpha=0.5),
+        Line2D([0], [0], marker="*", color="w", label="Prototype", markerfacecolor="gray", markeredgecolor="black",
+               markersize=8)
+    ]
+
+    all_handles = shape_handles + list(by_label.values())
+    all_labels = [h.get_label() for h in shape_handles] + list(by_label.keys())
+
+    ax_tsne.legend(all_handles, all_labels, loc="best")
+    plt.tight_layout()
 
     platform_name = platform.node()
 
     wandb.init(
         project="ProTab",
         entity="jacek-karolczak",
-        tags=["prototypes_evaluation", "latex"],
-        name=f"{dataset_name}_prototypes_analysis",
+        name=f"{dataset_name}_prototypes_evaluation",
+        tags=["prototypes_evaluation"],
         config={
             "architecture": "ProTab",
             "model": model_config.__dict__,
@@ -61,155 +201,17 @@ def main(dataset_name: TNamedBoolData, device: str, batch_size: int) -> None:
         },
     )
 
-    device = torch.device(device)
-    model = model.to(device)
-    model.eval()
-
-    proto_df = fetch_logged_table(best_run, "prototypical_parts")
-    proto_vals, proto_masks = data_container.scale(proto_df)
-    proto_vals = proto_vals.to(device)
-    proto_masks = proto_masks.to(device)
-
-    x_eval_tensor = torch.tensor(data_container.x_eval.values, dtype=torch.float32)
-
-    y_eval_indices_np = np.argmax(data_container.y_eval.values, axis=1)
-    y_eval_indices = torch.tensor(y_eval_indices_np, dtype=torch.long)
-
-    class_names = data_container.y_eval.columns.tolist()
-    unique_class_indices = sorted(list(set(y_eval_indices_np)))
-
-    dataset = TensorDataset(x_eval_tensor, y_eval_indices)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-
-    all_min_dists = []
-    all_fs_dists = []
-    all_labels = []
-
-    p_exp = proto_vals.unsqueeze(0)
-    m_exp = proto_masks.unsqueeze(0)
-
-    with torch.no_grad():
-        for x_batch, y_batch in tqdm(dataloader, desc="Computing Distances"):
-            x_batch = x_batch.to(device)
-
-            instance_embeddings = model.embeddings(x_batch)
-            dists = model.prototypes.compute_distance_matrix(instance_embeddings)
-
-            min_dists, _ = torch.min(dists, dim=1)
-            all_min_dists.append(min_dists.cpu())
-
-            x_exp_batch = x_batch.unsqueeze(1)
-            diff_sq = (x_exp_batch - p_exp) ** 2
-            masked_diff_sq = diff_sq * m_exp
-
-            fs_dists = torch.sqrt(torch.sum(masked_diff_sq, dim=-1) + 1e-8)
-            all_fs_dists.append(fs_dists.cpu())
-
-            all_labels.append(y_batch)
-
-    min_dists = torch.cat(all_min_dists)
-    fs_dists = torch.cat(all_fs_dists)
-    y_eval = torch.cat(all_labels).numpy()
-
-    n_protos = min_dists.shape[1]
-    proto_indices = list(range(n_protos))
-
-    emb_cols = ["Prototype_Idx"]
-    emb_rows = {pid: [pid] for pid in proto_indices}
-
-    for c_idx in unique_class_indices:
-        c_name = str(class_names[c_idx])
-        emb_cols.extend([f"{c_name}_Mean", f"{c_name}_Std"])
-
-        mask = (y_eval == c_idx)
-        if not np.any(mask):
-            for pid in proto_indices:
-                emb_rows[pid].extend([np.nan, np.nan])
-            continue
-
-        class_dists = min_dists[mask].numpy()
-
-        means = np.mean(class_dists, axis=0)
-        stds_ = np.std(class_dists, axis=0)
-
-        for pid in proto_indices:
-            emb_rows[pid].extend([means[pid], stds_[pid]])
-
     wandb.log({
-        f"{dataset_name}/embedding_space_stats": wandb.Table(
-            data=list(emb_rows.values()),
-            columns=emb_cols
-        )
+        "best_rank_distribution": wandb.Table(dataframe=df_rank),
+        "top_k_purity": wandb.Table(dataframe=pd.DataFrame(purity_records)),
+        "tsne_embeddings": wandb.Table(dataframe=df_tsne),
+        "rank_histogram_plot": wandb.Image(fig_hist),
+        "tsne_plot": wandb.Image(fig_tsne)
     })
 
-    fs_cols = ["Prototype_Idx"]
-    fs_rows = {pid: [pid] for pid in proto_indices}
-
-    for c_idx in unique_class_indices:
-        c_name = str(class_names[c_idx])
-        fs_cols.extend([f"{c_name}_Mean", f"{c_name}_Std"])
-
-        mask = (y_eval == c_idx)
-        if not np.any(mask):
-            for pid in proto_indices:
-                fs_rows[pid].extend([np.nan, np.nan])
-            continue
-
-        class_fs_dists = fs_dists[mask].numpy()
-        means = np.mean(class_fs_dists, axis=0)
-        stds_ = np.std(class_fs_dists, axis=0)
-
-        for pid in proto_indices:
-            fs_rows[pid].extend([means[pid], stds_[pid]])
-
-    wandb.log({
-        f"{dataset_name}/feature_space_stats": wandb.Table(
-            data=list(fs_rows.values()),
-            columns=fs_cols
-        )
-    })
-
-    ranks = torch.argsort(min_dists, dim=1)
-    ranks_val = torch.argsort(ranks, dim=1).float()
-
-    mean_ranks = ranks_val.mean(dim=0).numpy()
-    std_ranks = ranks_val.std(dim=0).numpy()
-
-    rank_data = [
-        [pid, m, s] for pid, (m, s) in enumerate(zip(mean_ranks, std_ranks))
-    ]
-    wandb.log({
-        f"{dataset_name}/proto_ranks": wandb.Table(
-            data=rank_data,
-            columns=["Prototype_Idx", "Mean_Rank", "Std_Rank"]
-        )
-    })
-
-    raw_importance = proto_masks.sum(dim=0).cpu().numpy()
-    if np.max(raw_importance) > 0:
-        raw_importance = raw_importance / np.max(raw_importance)
-
-    cls_weights = model.classifier.network[-1].weight.data
-    proto_influence = cls_weights.abs().mean(dim=0)
-    n_features_per_proto = torch.clamp(proto_masks.sum(dim=1), min=1.0)
-
-    proto_influence = proto_influence / n_features_per_proto
-
-    if torch.max(proto_influence) > 0:
-        proto_influence = proto_influence / torch.max(proto_influence)
-
-    weighted_importance = torch.matmul(proto_influence, proto_masks).cpu().numpy()
-
-    feature_names = data_container.x_train.columns.tolist()
-    fi_data = []
-    for i, f_name in enumerate(feature_names):
-        fi_data.append([f_name, raw_importance[i], weighted_importance[i]])
-
-    wandb.log({
-        f"{dataset_name}/feature_importance": wandb.Table(
-            data=fi_data, columns=["Feature", "Raw_FI", "Weighted_FI"]
-        )
-    })
+    plt.close(fig_hist)
+    plt.close(fig_tsne)
+    wandb.finish()
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+cmcrameri
+matplotlib
 openml
 optuna
 pyyaml

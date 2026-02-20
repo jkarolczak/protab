@@ -4,9 +4,12 @@ import os
 from pathlib import Path
 
 import click
+import cmcrameri.cm as cmc
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import wandb
+from matplotlib.lines import Line2D
 
 from protab.data.named_data import TNamedBoolData
 
@@ -24,15 +27,10 @@ def fetch_logged_table(run, table_name: str) -> pd.DataFrame:
 
     dir_path = target_artifact.download()
 
-    # 1. Try recursive search for .table.json
     json_files = glob.glob(os.path.join(dir_path, "**", "*.table.json"), recursive=True)
 
-    # 2. Fallback: Search for any .json file if the specific extension isn't found
     if not json_files:
         json_files = glob.glob(os.path.join(dir_path, "**", "*.json"), recursive=True)
-
-    if not json_files:
-        raise FileNotFoundError(f"Could not find any JSON files for table '{table_name}' in downloaded artifact at {dir_path}")
 
     with open(json_files[0], "r") as f:
         table_dict = json.load(f)
@@ -40,40 +38,30 @@ def fetch_logged_table(run, table_name: str) -> pd.DataFrame:
     return pd.DataFrame(data=table_dict["data"], columns=table_dict["columns"])
 
 
-def compute_separation_margin(df: pd.DataFrame) -> float:
-    class_cols = [c for c in df.columns if str(c).endswith('_Mean')]
-    if len(class_cols) < 2:
-        return 0.0
-
-    means = df[class_cols].values
-    sorted_means = np.sort(means, axis=1)
-
-    margins = 1.0 - (sorted_means[:, 0] / (sorted_means[:, 1] + 1e-8))
-
-    return np.mean(margins)
-
-
-def compute_gini(array: np.ndarray) -> float:
-    array = np.clip(np.sort(array), 0, None)  # Ensure no negatives
-    if np.sum(array) == 0:
-        return 0.0
-    n = array.shape[0]
-    index = np.arange(1, n + 1)
-    return ((np.sum((2 * index - n - 1) * array)) / (n * np.sum(array)))
-
-
 @click.command()
-@click.option("--entity", type=str, default="jacek-karolczak", help="WandB entity name.")
-@click.option("--project", type=str, default="ProTab", help="WandB project name.")
-@click.option("--log-wandb", is_flag=True, help="Enable logging results to WandB.")
+@click.option("--entity", type=str, default="jacek-karolczak")
+@click.option("--project", type=str, default="ProTab")
+@click.option("--log-wandb", is_flag=True)
 def main(entity: str, project: str, log_wandb: bool) -> None:
-    api = wandb.Api(timeout=60)
-    all_records = []
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Computer Modern Roman", "Times New Roman", "serif"],
+        "font.size": 8,
+        "axes.labelsize": 8,
+        "xtick.labelsize": 8,
+        "ytick.labelsize": 8,
+        "legend.fontsize": 8,
+        "figure.dpi": 800,
+        "savefig.dpi": 800,
+    })
 
-    print(f"Fetching prototype evaluations from {entity}/{project}...")
+    api = wandb.Api(timeout=60)
+    datasets_found = []
+    purity_records = []
+    rank_dfs = {}
+    tsne_dfs = {}
 
     for dataset_name in TNamedBoolData.__args__:
-        # Search for the evaluation run explicitly tagged with 'prototypes_evaluation'
         filters = {
             "tags": {"$in": ["prototypes_evaluation"]},
             "config.data.name": dataset_name
@@ -82,58 +70,106 @@ def main(entity: str, project: str, log_wandb: bool) -> None:
         runs = api.runs(f"{entity}/{project}", filters=filters, order="-created_at", per_page=1)
         run = next(iter(runs), None)
 
-        if not run:
-            continue
+        df_ranks = fetch_logged_table(run, "best_rank_distribution")
+        df_purity = fetch_logged_table(run, "top_k_purity")
+        df_tsne = fetch_logged_table(run, "tsne_embeddings")
 
-        df_emb = fetch_logged_table(run, "embedding_space_stats")
-        df_feat = fetch_logged_table(run, "feature_space_stats")
-        df_rank = fetch_logged_table(run, "proto_ranks")
-        df_fi = fetch_logged_table(run, "feature_importance")
+        datasets_found.append(dataset_name)
+        rank_dfs[dataset_name] = df_ranks
+        tsne_dfs[dataset_name] = df_tsne
 
-        # 2. Compute Aggregated Metrics
-        latent_margin = compute_separation_margin(df_emb)
-        feature_margin = compute_separation_margin(df_feat)
-        rank_volatility = np.mean(df_rank["Std_Rank"] / len(df_rank))
-        feature_focus = compute_gini(df_fi["Weighted_FI"].values)
+        avg_purity = df_purity[[c for c in df_purity.columns if "purity_" in c]].mean().to_dict()
+        row = {"Dataset": dataset_name}
+        for k_label, val in avg_purity.items():
+            k_val = k_label.split("_")[1]
+            row[f"$k={k_val}$"] = val
+        purity_records.append(row)
 
-        all_records.append({
-            "Dataset": dataset_name,
-            "Latent Margin": latent_margin,
-            "Feature Margin": feature_margin,
-            "Rank Volatility (Std Dev)": rank_volatility,
-            "Feature Focus (Gini)": feature_focus
-        })
+    if not datasets_found:
+        return
 
-    df = pd.DataFrame(all_records)
+    output_dir = Path("results")
+    output_dir.mkdir(exist_ok=True)
 
-    df_formatted = df.copy()
-    df_formatted["Latent Margin"] = df_formatted["Latent Margin"].apply(lambda x: f"{x:.4f}")
-    df_formatted["Feature Margin"] = df_formatted["Feature Margin"].apply(lambda x: f"{x:.4f}")
-    df_formatted["Rank Volatility (Std Dev)"] = df_formatted["Rank Volatility (Std Dev)"].apply(lambda x: f"{x:.4f}")
-    df_formatted["Feature Focus (Gini)"] = df_formatted["Feature Focus (Gini)"].apply(lambda x: f"{x:.4f}")
+    df_purity_agg = pd.DataFrame(purity_records)
+    for col in df_purity_agg.columns:
+        if col != "Dataset":
+            df_purity_agg[col] = df_purity_agg[col].apply(lambda x: f"{x:.4f}")
 
-    df_latex = df_formatted.copy()
+    df_latex = df_purity_agg.copy()
     df_latex["Dataset"] = df_latex["Dataset"].apply(lambda x: str(x).replace("_", "\\_"))
-
-    caption_text = (
-        "Aggregated prototype learning metrics demonstrating class specialization and interpretability. "
-        "Latent and Feature Margins denote how much closer prototypes are to their primary class than the secondary class. "
-        "Rank Volatility indicates local specialization (dynamic prototype usage across instances), and "
-        "Feature Focus (Gini coefficient) demonstrates reliance on a sparse subset of features."
-    )
 
     latex_table = df_latex.to_latex(
         index=False,
         escape=False,
-        caption=caption_text,
-        label="tab:prototype_analysis",
-        column_format="lcccc"
+        label="tab:top_k_purity",
+        column_format="l" + "c" * (len(df_latex.columns) - 1)
     )
 
-    output_path = Path("results") / "prototype_analysis_table.tex"
-    output_path.parent.mkdir(exist_ok=True)
-    with output_path.open("w") as f:
+    with open(output_dir / "top_k_purity.tex", "w") as f:
         f.write(latex_table)
+
+    fig_hist, axes_hist = plt.subplots(1, len(datasets_found), figsize=(4.8, 1.5), dpi=800)
+    if len(datasets_found) == 1:
+        axes_hist = [axes_hist]
+
+    for ax, ds in zip(axes_hist, datasets_found):
+        df = rank_dfs[ds]
+        ax.bar(df["rank"], df["prototypes_count"], color="#666666", edgecolor="black")
+        ax.set_title(ds.replace("_", " ").title(), pad=3)
+        ax.set_xlabel("Best Rank", labelpad=2)
+        if ax == axes_hist[0]:
+            ax.set_ylabel("Prototypes", labelpad=2)
+        ax.grid(axis="y", linestyle="--", alpha=0.7)
+        ax.tick_params(axis='both', which='major', pad=2)
+
+    plt.tight_layout(pad=0.2)
+    hist_path = output_dir / "rank_histograms.pdf"
+    fig_hist.savefig(hist_path, bbox_inches="tight")
+
+    fig_tsne, axes_tsne = plt.subplots(1, len(datasets_found), figsize=(4.8, 1.5), dpi=800)
+    if len(datasets_found) == 1:
+        axes_tsne = [axes_tsne]
+
+    cmap = cmc.batlowS
+
+    for ax, ds in zip(axes_tsne, datasets_found):
+        df = tsne_dfs[ds]
+        classes = sorted(df["class"].unique())
+        colors = cmap(np.linspace(0, 1, len(classes)))
+
+        patches = df[df["type"] == "patch"]
+        for idx, cls in enumerate(classes):
+            subset = patches[patches["class"] == cls]
+            ax.scatter(subset["x"], subset["y"], s=2, alpha=0.5, label=f"Class {int(cls)}", color=colors[idx])
+
+        protos = df[df["type"] == "prototype"]
+        for idx, cls in enumerate(classes):
+            subset = protos[protos["class"] == cls]
+            ax.scatter(subset["x"], subset["y"], s=30, marker="*", edgecolor="black", linewidth=0.5, color=colors[idx])
+
+        ax.set_title(ds.replace("_", " ").title(), pad=3)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        if ax == axes_tsne[0]:
+            handles, labels = ax.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+
+            shape_handles = [
+                Line2D([0], [0], marker="o", color="w", label="Patch", markerfacecolor="gray", markersize=3, alpha=0.5),
+                Line2D([0], [0], marker="*", color="w", label="Prototype", markerfacecolor="gray", markeredgecolor="black",
+                       markersize=6)
+            ]
+
+            all_handles = shape_handles + list(by_label.values())
+            all_labels = [h.get_label() for h in shape_handles] + list(by_label.keys())
+
+            ax.legend(all_handles, all_labels, loc="best", prop={'size': 4})
+
+    plt.tight_layout(pad=0.2)
+    tsne_path = output_dir / "tsne_embeddings.pdf"
+    fig_tsne.savefig(tsne_path, bbox_inches="tight")
 
     if log_wandb:
         wandb.init(
@@ -144,11 +180,18 @@ def main(entity: str, project: str, log_wandb: bool) -> None:
         )
 
         wandb.log({
-            "prototype_analysis_table": wandb.Table(dataframe=df)
+            "top_k_purity_table": wandb.Table(dataframe=df_purity_agg),
+            "rank_histograms_plot": wandb.Image(fig_hist),
+            "tsne_plot": wandb.Image(fig_tsne)
         })
 
-        wandb.save(output_path, policy="now")
+        wandb.save(str(output_dir / "top_k_purity.tex"), policy="now")
+        wandb.save(str(hist_path), policy="now")
+        wandb.save(str(tsne_path), policy="now")
         wandb.finish()
+
+    plt.close(fig_hist)
+    plt.close(fig_tsne)
 
 
 if __name__ == "__main__":
