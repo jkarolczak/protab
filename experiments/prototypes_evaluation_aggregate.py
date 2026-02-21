@@ -70,6 +70,9 @@ def main(entity: str, project: str, log_wandb: bool) -> None:
         runs = api.runs(f"{entity}/{project}", filters=filters, order="-created_at", per_page=1)
         run = next(iter(runs), None)
 
+        if not run:
+            continue
+
         df_ranks = fetch_logged_table(run, "best_rank_distribution")
         df_purity = fetch_logged_table(run, "top_k_purity")
         df_tsne = fetch_logged_table(run, "tsne_embeddings")
@@ -97,7 +100,7 @@ def main(entity: str, project: str, log_wandb: bool) -> None:
             df_purity_agg[col] = df_purity_agg[col].apply(lambda x: f"{x:.4f}")
 
     df_latex = df_purity_agg.copy()
-    df_latex["Dataset"] = df_latex["Dataset"].apply(lambda x: str(x).replace("_", "\\_"))
+    df_latex["Dataset"] = df_latex["Dataset"].apply(lambda x: str(x).replace("bng_", "").replace("_", "\\_"))
 
     latex_table = df_latex.to_latex(
         index=False,
@@ -115,15 +118,16 @@ def main(entity: str, project: str, log_wandb: bool) -> None:
 
     for ax, ds in zip(axes_hist, datasets_found):
         df = rank_dfs[ds]
-        ax.bar(df["rank"], df["prototypes_count"], color="#666666", edgecolor="black")
-        ax.set_title(ds.replace("_", " ").title(), pad=3)
-        ax.set_xlabel("Best Rank", labelpad=2)
-        if ax == axes_hist[0]:
-            ax.set_ylabel("Prototypes", labelpad=2)
         ax.grid(axis="y", linestyle="--", alpha=0.7)
-        ax.tick_params(axis='both', which='major', pad=2)
+        ax.bar(df["rank"], df["prototypes_count"], color="#666666", edgecolor="black")
+        ax.set_title(ds.replace("bng", "").replace("_", " ").title(), pad=3, fontsize=8)
+        if ax == axes_hist[0]:
+            ax.set_ylabel("Number Of Prototypes", labelpad=2)
+        ax.tick_params(axis="both", which="major", pad=2)
 
-    plt.tight_layout(pad=0.2)
+    fig_hist.supxlabel("Best Rank Achieved", fontsize=8)
+
+    plt.tight_layout(pad=0.1, w_pad=0.025)
     hist_path = output_dir / "rank_histograms.pdf"
     fig_hist.savefig(hist_path, bbox_inches="tight")
 
@@ -165,7 +169,7 @@ def main(entity: str, project: str, log_wandb: bool) -> None:
             all_handles = shape_handles + list(by_label.values())
             all_labels = [h.get_label() for h in shape_handles] + list(by_label.keys())
 
-            ax.legend(all_handles, all_labels, loc="best", prop={'size': 4})
+            ax.legend(all_handles, all_labels, loc="best", prop={"size": 4})
 
     plt.tight_layout(pad=0.2)
     tsne_path = output_dir / "tsne_embeddings.pdf"
