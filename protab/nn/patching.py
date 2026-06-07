@@ -55,7 +55,13 @@ class ProbabilisticPatching(nn.Module):
 
         logits = self.weights
 
-        _, topk_indices = torch.topk(logits, self.config.patch_len, dim=-1)
+        if self.training and self.config.probabilistic:
+            gumbel_noise = -torch.empty_like(logits).exponential_().log()
+            noisy_logits = logits + gumbel_noise
+            _, topk_indices = torch.topk(noisy_logits, self.config.patch_len, dim=-1)
+        else:
+            _, topk_indices = torch.topk(logits, self.config.patch_len, dim=-1)
+
         mask_hard = torch.zeros_like(logits)
         mask_hard.scatter_(-1, topk_indices, 1.0)
 

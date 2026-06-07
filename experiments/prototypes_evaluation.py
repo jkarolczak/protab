@@ -103,11 +103,15 @@ def main(dataset_name: TNamedData, device: str) -> None:
     valid_k_vals = [k for k in k_vals if k <= all_patches_flat.shape[0]]
 
     for j in range(all_ranks.shape[1]):
+        assigned_c = assigned_classes[j].item()
+
+        if assigned_c not in [0, 1]:
+            continue
+
         proto_dists = dists[j]
         top_indices = torch.topk(proto_dists, k=max(valid_k_vals), largest=False).indices
         top_labels = all_labels_flat[top_indices]
 
-        assigned_c = assigned_classes[j].item()
         record = {"prototype_idx": j, "assigned_class": assigned_c}
         for k in valid_k_vals:
             purity = (top_labels[:k] == assigned_c).float().mean().item()
@@ -153,8 +157,6 @@ def main(dataset_name: TNamedData, device: str) -> None:
 
     classes = sorted(df_tsne["class"].unique())
 
-    # Sample evenly across the colormap to maximize contrast for categorical data,
-    # rather than picking the first adjacent (and therefore visually similar) colors.
     colors = cmap(np.linspace(0, 1, len(classes)))
 
     patches = df_tsne[df_tsne["type"] == "patch"]
