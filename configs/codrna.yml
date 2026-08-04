@@ -25,7 +25,7 @@ trainer:
     w_patch_diversity: 2.00
     w_proto_diversity: 1.00
   wandb_config:
-    project: "ProTab"
+    project: "P2Tab"
     entity: "jacek-karolczak"
     active: false
   verbose: true

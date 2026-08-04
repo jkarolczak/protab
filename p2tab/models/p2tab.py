@@ -7,20 +7,20 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from protab.models.mlp import (MLPConfig,
-                               MLP)
-from protab.nn.patching import (PatchingConfig,
-                                ProbabilisticPatching)
-from protab.nn.prototypes import (PrototypeConfig,
-                                  TDistanceMetric,
-                                  Prototypes)
-from protab.training.reproducibility import set_seed
+from p2tab.models.mlp import (MLPConfig,
+                              MLP)
+from p2tab.nn.patching import (PatchingConfig,
+                               ProbabilisticPatching)
+from p2tab.nn.prototypes import (PrototypeConfig,
+                                 TDistanceMetric,
+                                 Prototypes)
+from p2tab.training.reproducibility import set_seed
 
 TSparseProjection: TypeAlias = Literal["entmax", "sparsemax", "none"]
 
 
 @dataclass
-class ProTabConfig:
+class P2TabConfig:
     patching: PatchingConfig
     encoder: MLPConfig
     prototypes: PrototypeConfig
@@ -28,7 +28,7 @@ class ProTabConfig:
     sparse_projection: TSparseProjection = "entmax"
 
 
-class ProTabConfigFactory:
+class P2TabConfigFactory:
     @staticmethod
     def build(
             n_features: int,
@@ -43,7 +43,7 @@ class ProTabConfigFactory:
             probabilistic: bool = True,
             prototype_distance_metric: TDistanceMetric = "l2",
             sparse_projection: TSparseProjection = "entmax"
-    ) -> ProTabConfig:
+    ) -> P2TabConfig:
         patching_config = PatchingConfig(
             n_features=n_features,
             patch_len=patch_len,
@@ -71,7 +71,7 @@ class ProTabConfigFactory:
             output_dim=n_classes
         )
 
-        return ProTabConfig(
+        return P2TabConfig(
             patching=patching_config,
             encoder=encoder_config,
             prototypes=prototypes_config,
@@ -80,7 +80,7 @@ class ProTabConfigFactory:
         )
 
     @staticmethod
-    def from_yaml(config_path: Path) -> ProTabConfig:
+    def from_yaml(config_path: Path) -> P2TabConfig:
         import yaml
 
         with open(config_path, "r") as f:
@@ -91,7 +91,7 @@ class ProTabConfigFactory:
         prototypes_config = PrototypeConfig(**config_dict["prototypes"])
         classifier_config = MLPConfig(**config_dict["classifier"])
 
-        return ProTabConfig(
+        return P2TabConfig(
             patching=patching_config,
             encoder=encoder_config,
             prototypes=prototypes_config,
@@ -100,10 +100,10 @@ class ProTabConfigFactory:
         )
 
 
-class ProTab(nn.Module):
+class P2Tab(nn.Module):
     def __init__(
             self,
-            config: ProTabConfig
+            config: P2TabConfig
     ) -> None:
         super().__init__()
         set_seed()

@@ -1,10 +1,10 @@
 import click
 import wandb
 
-from protab.data.named_data import TNamedData
-from protab.models.protab import ProTab
-from protab.training.config import fetch_best_run
-from protab.training.trainer import ProTabTrainer
+from p2tab.data.named_data import TNamedData
+from p2tab.models.p2tab import P2Tab
+from p2tab.training.config import fetch_best_run
+from p2tab.training.trainer import P2TabTrainer
 
 
 @click.command()
@@ -21,8 +21,8 @@ def main(dataset_name: TNamedData, device: str) -> None:
     trainer_config.criterion_config.w_patch_diversity = 0.0
     trainer_config.criterion_config.w_proto_diversity = 0.0
 
-    protab = ProTab(model_config)
-    trainer = ProTabTrainer(data_container, protab, trainer_config)
+    p2tab = P2Tab(model_config)
+    trainer = P2TabTrainer(data_container, p2tab, trainer_config)
 
     current_run_summary = trainer.train(wandb_tags=["ablation", "no_compound_loss"], wandb_finish=False, return_score=True)
 

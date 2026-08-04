@@ -6,24 +6,24 @@ import torch
 import wandb
 import yaml
 
-from protab.data.dataset import DataContainer
-from protab.data.dataset import DataContainerConfig
-from protab.data.named_data import TNamedData
-from protab.models.mlp import MLPConfig
-from protab.models.protab import (ProTab,
-                                  ProTabConfigFactory)
-from protab.models.protab import ProTabConfig
-from protab.nn.patching import PatchingConfig
-from protab.nn.prototypes import PrototypeConfig
-from protab.training.log import WandbConfig
-from protab.training.loss import CompoundLossConfig
-from protab.training.trainer import ProTabTrainerConfig
+from p2tab.data.dataset import DataContainer
+from p2tab.data.dataset import DataContainerConfig
+from p2tab.data.named_data import TNamedData
+from p2tab.models.mlp import MLPConfig
+from p2tab.models.p2tab import (P2Tab,
+                                P2TabConfig,
+                                P2TabConfigFactory)
+from p2tab.nn.patching import PatchingConfig
+from p2tab.nn.prototypes import PrototypeConfig
+from p2tab.training.log import WandbConfig
+from p2tab.training.loss import CompoundLossConfig
+from p2tab.training.trainer import P2TabTrainerConfig
 
 
 def read_data_and_configs(
         dataset_name: TNamedData
-) -> tuple[DataContainer, ProTabConfig, ProTabTrainerConfig]:
-    base = os.environ.get("PROTAB_CONFIGS", "./configs/")
+) -> tuple[DataContainer, P2TabConfig, P2TabTrainerConfig]:
+    base = os.environ.get("P2TAB_CONFIGS", "./configs/")
     base_path = Path(base)
     config_path = base_path / f"{dataset_name}.yml"
 
@@ -34,23 +34,23 @@ def read_data_and_configs(
     config_dict["model"]["n_features"] = data_container.n_features
     config_dict["model"]["n_classes"] = data_container.n_classes
 
-    protab_config = ProTabConfigFactory.build(**config_dict["model"])
+    p2tab_config = P2TabConfigFactory.build(**config_dict["model"])
     config_dict["trainer"]["wandb_config"] = WandbConfig(**config_dict["trainer"]["wandb_config"])
 
     config_dict["trainer"]["criterion_config"]["ce_pos_weight"] = data_container.pos_weight
     config_dict["trainer"]["criterion_config"] = CompoundLossConfig(**config_dict["trainer"]["criterion_config"])
-    trainer_config = ProTabTrainerConfig(**config_dict["trainer"])
+    trainer_config = P2TabTrainerConfig(**config_dict["trainer"])
 
-    return data_container, protab_config, trainer_config
+    return data_container, p2tab_config, trainer_config
 
 
 def fetch_best_run(dataset_name: str, tags: list[str], load_model: bool = False):
     api = wandb.Api()
 
     runs = api.runs(
-        path="jacek-karolczak/ProTab",
+        path="jacek-karolczak/P2Tab",
         filters={
-            "config.architecture": "ProTab",
+            "config.architecture": "P2Tab",
             "config.data.name": dataset_name,
             "tags": {"$in": tags},
             "summary_metrics.eval_balanced_accuracy": {"$ne": None}
@@ -68,17 +68,17 @@ def fetch_best_run(dataset_name: str, tags: list[str], load_model: bool = False)
     data_config = DataContainerConfig(**config["data"])
     data_container = DataContainer(data_config)
 
-    protab_config_dict = config["model"]
+    p2tab = config["model"]
 
-    protab_config_dict["encoder"]["activation"] = eval(protab_config_dict["encoder"]["activation"])
-    protab_config_dict["classifier"]["activation"] = eval(protab_config_dict["classifier"]["activation"])
+    p2tab["encoder"]["activation"] = eval(p2tab["encoder"]["activation"])
+    p2tab["classifier"]["activation"] = eval(p2tab["classifier"]["activation"])
 
-    protab_config_dict["patching"] = PatchingConfig(**protab_config_dict["patching"])
-    protab_config_dict["encoder"] = MLPConfig(**protab_config_dict["encoder"])
-    protab_config_dict["prototypes"] = PrototypeConfig(**protab_config_dict["prototypes"])
-    protab_config_dict["classifier"] = MLPConfig(**protab_config_dict["classifier"])
+    p2tab["patching"] = PatchingConfig(**p2tab["patching"])
+    p2tab["encoder"] = MLPConfig(**p2tab["encoder"])
+    p2tab["prototypes"] = PrototypeConfig(**p2tab["prototypes"])
+    p2tab["classifier"] = MLPConfig(**p2tab["classifier"])
 
-    protab_config = ProTabConfig(**protab_config_dict)
+    p2tab_config = P2TabConfig(**p2tab)
 
     trainer_dict = config["trainer"]
 
@@ -91,14 +91,14 @@ def fetch_best_run(dataset_name: str, tags: list[str], load_model: bool = False)
     trainer_dict["wandb_config"] = wandb_cfg
     trainer_dict["criterion_config"] = criterion_cfg
 
-    trainer_config = ProTabTrainerConfig(**trainer_dict)
+    trainer_config = P2TabTrainerConfig(**trainer_dict)
 
     if "cuda" in trainer_config.device and not torch.cuda.is_available():
         trainer_config.device = "cpu"
 
     model = None
     if load_model:
-        model = ProTab(protab_config)
+        model = P2Tab(p2tab_config)
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             f = best_run.file("files/model_state_dict.pt")
@@ -112,4 +112,4 @@ def fetch_best_run(dataset_name: str, tags: list[str], load_model: bool = False)
         model.to(trainer_config.device)
         model.eval()
 
-    return best_run, data_container, protab_config, trainer_config, model
+    return best_run, data_container, p2tab_config, trainer_config, model

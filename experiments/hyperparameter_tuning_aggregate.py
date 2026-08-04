@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import wandb
 
-from protab.data.named_data import TNamedData
+from p2tab.data.named_data import TNamedData
 
 HPARAM_SYMBOLS = {
     "batch_size": "$B$",
@@ -48,12 +48,12 @@ def main() -> None:
     for dataset_name in TNamedData.__args__:
         filters = {
             "config.data.name": dataset_name,
-            "config.architecture": "ProTab",
+            "config.architecture": "P2Tab",
             "tags": {"$in": ["hyperparameter_tuning"]}
         }
 
         runs = api.runs(
-            f"jacek-karolczak/ProTab",
+            f"jacek-karolczak/P2Tab",
             filters=filters,
             order="-summary_metrics.eval_balanced_accuracy",
             per_page=1
@@ -90,7 +90,7 @@ def main() -> None:
     df = df[[col for col in COLUMN_ORDER if col in df.columns]]
 
     caption_text = (
-        "Best hyperparameters discovered for the ProTab architecture across all datasets. "
+        "Best hyperparameters discovered for the P2Tab architecture across all datasets. "
         "Symbols correspond to: $B$ (batch size), $P$ (number of patches), $R$ (number of prototypes), "
         "$E$ (embedding dimensionality), $k$ (features selected per patch), $lr$ (learning rate), "
         "and $\\lambda$ (weight decay)."

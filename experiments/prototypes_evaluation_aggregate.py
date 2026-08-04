@@ -11,7 +11,7 @@ import pandas as pd
 import wandb
 from matplotlib.lines import Line2D
 
-from protab.data.named_data import TNamedBoolData
+from p2tab.data.named_data import TNamedBoolData
 
 
 def fetch_logged_table(run, table_name: str) -> pd.DataFrame:
@@ -40,7 +40,7 @@ def fetch_logged_table(run, table_name: str) -> pd.DataFrame:
 
 @click.command()
 @click.option("--entity", type=str, default="jacek-karolczak")
-@click.option("--project", type=str, default="ProTab")
+@click.option("--project", type=str, default="P2Tab")
 @click.option("--log-wandb", is_flag=True)
 def main(entity: str, project: str, log_wandb: bool) -> None:
     plt.rcParams.update({

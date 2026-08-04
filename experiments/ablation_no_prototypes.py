@@ -1,10 +1,10 @@
 import click
 import wandb
 
-from protab.data.named_data import TNamedData
-from protab.models.protab import ProTab
-from protab.training.config import fetch_best_run
-from protab.training.trainer import ProTabTrainer
+from p2tab.data.named_data import TNamedData
+from p2tab.models.p2tab import P2Tab
+from p2tab.training.config import fetch_best_run
+from p2tab.training.trainer import P2TabTrainer
 
 
 @click.command()
@@ -31,8 +31,8 @@ def main(dataset_name: TNamedData, device: str) -> None:
     model_config.prototypes.n_prototypes = model_config.classifier.output_dim
     model_config.classifier.input_dim = model_config.prototypes.n_prototypes
 
-    protab = ProTab(model_config)
-    trainer = ProTabTrainer(data_container, protab, trainer_config)
+    p2tab = P2Tab(model_config)
+    trainer = P2TabTrainer(data_container, p2tab, trainer_config)
 
     current_run_summary = trainer.train(wandb_tags=["ablation", "no_prototypes"], wandb_finish=False, return_score=True)
     best_run_summary = best_run.summary

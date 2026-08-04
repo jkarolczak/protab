@@ -1,8 +1,8 @@
 """
-Hyperparameter tuning for MEDIC baseline on ProTab datasets.
+Hyperparameter tuning for MEDIC baseline on P2Tab datasets.
 
 This script runs MEDIC (Model for Explainable Diagnosis using Interpretable Concepts)
-on ProTab's datasets using the same train/eval/test splits and Optuna-based tuning protocol.
+on P2Tab's datasets using the same train/eval/test splits and Optuna-based tuning protocol.
 
 MEDIC definitions are auto-generated from the data: binary features get one-hot encoding,
 continuous features get fuzzy binning with a tunable number of bins.
@@ -35,9 +35,8 @@ from torch.utils.data import DataLoader, TensorDataset
 from medic.classifiers.medic_classifier import Medic
 from medic.preprocessing import StandardScaler as MedicScaler
 
-from protab.data.named_data import TNamedData
-from protab.training.config import read_data_and_configs
-from protab.training.reproducibility import set_seed
+from p2tab.data.named_data import TNamedData
+from p2tab.training.reproducibility import set_seed
 
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -67,8 +66,9 @@ def generate_definitions(x_train_raw: np.ndarray, feature_names: list[str], n_bi
     return definitions
 
 
-def load_raw_data(dataset_name: TNamedData) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
-    """Load raw (unscaled) data from ProTab's CSV splits.
+def load_raw_data(dataset_name: TNamedData) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
+    """Load raw (unscaled) data from P2Tab's CSV splits.
 
     Returns x_train, y_train, x_eval, y_eval, x_test, y_test as numpy arrays,
     plus the list of feature names.
@@ -190,7 +190,7 @@ def evaluate_medic(
         device: torch.device,
         n_classes: int,
 ) -> dict[str, float]:
-    """Evaluate MEDIC and return metrics matching ProTab's evaluation protocol."""
+    """Evaluate MEDIC and return metrics matching P2Tab's evaluation protocol."""
     model.eval()
     logits_list = []
     labels_list = []
@@ -294,7 +294,7 @@ def objective(trial: optuna.Trial, dataset_name: TNamedData, device_str: str, lo
     platform_name = platform.node()
     if log_wandb:
         wandb.init(
-            project="ProTab",
+            project="P2Tab",
             entity="jacek-karolczak",
             name=f"{dataset_name}_medic_{uuid.uuid4()}",
             mode="online",

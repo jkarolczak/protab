@@ -4,10 +4,10 @@ import pandas as pd
 import tqdm
 import wandb
 
-from protab.data.named_data import TNamedData
+from p2tab.data.named_data import TNamedData
 
 MODELS = [
-    "mlp", "xgboost", "ProTab", "random_forest",
+    "mlp", "xgboost", "P2Tab", "random_forest",
     "tree", "logistic_regression"
 ]
 
@@ -27,7 +27,7 @@ def fetch_best_runs_targeted(datasets, models):
                 }
 
                 runs = api.runs(
-                    f"jacek-karolczak/ProTab",
+                    f"jacek-karolczak/P2Tab",
                     filters=filters,
                     order="-summary_metrics.eval_balanced_accuracy",
                     per_page=1

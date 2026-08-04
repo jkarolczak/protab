@@ -6,8 +6,8 @@ import click
 import pandas as pd
 import torch
 
-from protab.data.named_data import TNamedData
-from protab.training.config import fetch_best_run
+from p2tab.data.named_data import TNamedData
+from p2tab.training.config import fetch_best_run
 
 
 def fetch_logged_table(run, table_name: str) -> pd.DataFrame:

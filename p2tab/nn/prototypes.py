@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from protab.training.reproducibility import set_seed
+from p2tab.training.reproducibility import set_seed
 
 TDistanceMetric: TypeAlias = Literal["cosine", "dot", "l1", "l2"]
 

@@ -14,8 +14,8 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.tree import DecisionTreeClassifier
 from xgboost import XGBClassifier
 
-from protab.data.named_data import TNamedData
-from protab.training.config import read_data_and_configs
+from p2tab.data.named_data import TNamedData
+from p2tab.training.config import read_data_and_configs
 
 MODELS = ["xgboost", "mlp", "random_forest", "tree", "logistic_regression"]
 

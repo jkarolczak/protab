@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 
-from protab.training.reproducibility import set_seed
+from p2tab.training.reproducibility import set_seed
 
 
 @dataclass

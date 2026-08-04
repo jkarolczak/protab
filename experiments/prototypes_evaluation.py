@@ -11,8 +11,8 @@ import wandb
 from matplotlib.lines import Line2D
 from sklearn.manifold import TSNE
 
-from protab.data.named_data import TNamedData
-from protab.training.config import fetch_best_run
+from p2tab.data.named_data import TNamedData
+from p2tab.training.config import fetch_best_run
 
 MAX_PATCHES = 5000
 
@@ -33,12 +33,12 @@ def main(dataset_name: TNamedData, device: str) -> None:
         "savefig.dpi": 800,
     })
 
-    best_run, data_container, model_config, trainer_config, protab = fetch_best_run(
+    best_run, data_container, model_config, trainer_config, p2tab = fetch_best_run(
         dataset_name, ["hyperparameter_tuning"], load_model=True
     )
 
-    protab = protab.to(device)
-    protab.eval()
+    p2tab = p2tab.to(device)
+    p2tab.eval()
 
     _, _, test_dataset = data_container.to_simple_datasets()
     dataloader = torch.utils.data.DataLoader(
@@ -56,8 +56,8 @@ def main(dataset_name: TNamedData, device: str) -> None:
             x = x.to(device).to(torch.float32)
             y = y.to(device)
 
-            logits, patches_embeddings = protab(x, return_embeddings=True)
-            prototype_dist, patches_idcs = protab.prototypes(patches_embeddings)
+            logits, patches_embeddings = p2tab(x, return_embeddings=True)
+            prototype_dist, patches_idcs = p2tab.prototypes(patches_embeddings)
 
             ranks = torch.argsort(torch.argsort(prototype_dist, dim=1), dim=1) + 1
             ranks_list.append(ranks.cpu())
@@ -84,7 +84,7 @@ def main(dataset_name: TNamedData, device: str) -> None:
         count = (best_ranks_per_proto == r).sum().item()
         best_rank_distribution.append({"rank": r, "prototypes_count": count})
 
-    w_cls = protab.classifier.network[0].weight.data.cpu()
+    w_cls = p2tab.classifier.network[0].weight.data.cpu()
     if w_cls.shape[0] == 1:
         assigned_classes = (w_cls[0] > 0).long()
     else:
@@ -93,7 +93,7 @@ def main(dataset_name: TNamedData, device: str) -> None:
     all_patches_flat = torch.cat(patch_embeddings_list, dim=0)
     all_labels_flat = torch.cat(labels_list, dim=0)
 
-    proto_emb = F.normalize(protab.prototypes.prototypes.data, p=2, dim=-1).cpu()
+    proto_emb = F.normalize(p2tab.prototypes.prototypes.data, p=2, dim=-1).cpu()
 
     dists = torch.cdist(proto_emb, all_patches_flat)
 
@@ -190,12 +190,12 @@ def main(dataset_name: TNamedData, device: str) -> None:
     platform_name = platform.node()
 
     wandb.init(
-        project="ProTab",
+        project="P2Tab",
         entity="jacek-karolczak",
         name=f"{dataset_name}_prototypes_evaluation",
         tags=["prototypes_evaluation"],
         config={
-            "architecture": "ProTab",
+            "architecture": "P2Tab",
             "model": model_config.__dict__,
             "trainer": trainer_config.__dict__,
             "data": data_container.config.__dict__,

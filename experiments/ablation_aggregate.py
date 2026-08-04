@@ -4,7 +4,7 @@ import click
 import pandas as pd
 import wandb
 
-from protab.data.named_data import TNamedData
+from p2tab.data.named_data import TNamedData
 
 # The ablation tags exactly as they appear in your ablation scripts
 ABLATIONS = [
@@ -41,7 +41,7 @@ def main(metric: str, log_wandb: bool) -> None:
             }
 
             runs = api.runs(
-                f"jacek-karolczak/ProTab",
+                f"jacek-karolczak/P2Tab",
                 filters=filters,
                 order="-created_at",
                 per_page=1
@@ -73,7 +73,7 @@ def main(metric: str, log_wandb: bool) -> None:
 
     caption_text = (
         f"Ablation study results across datasets. Values represent the difference in "
-        f"{metric.replace('_', ' ')} compared to the full ProTab model (Negative values indicate a performance drop)."
+        f"{metric.replace('_', ' ')} compared to the full P2Tab model (Negative values indicate a performance drop)."
     )
 
     latex_table = df_latex.to_latex(
@@ -92,7 +92,7 @@ def main(metric: str, log_wandb: bool) -> None:
     if log_wandb:
         wandb.init(
             entity="jacek-karolczak",
-            project="ProTab",
+            project="P2Tab",
             name="ablation_aggregation",
             tags=["ablation", "summary"]
         )

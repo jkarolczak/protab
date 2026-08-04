@@ -10,18 +10,18 @@ import wandb
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from protab.data.dataset import (DataContainer,
-                                 SimpleDataset)
-from protab.models.protab import ProTab
-from protab.training.log import WandbConfig
-from protab.training.loss import (CompoundLoss,
-                                  CompoundLossConfig)
-from protab.training.reproducibility import set_seed
-from protab.training.utils import SimpleCounter
+from p2tab.data.dataset import (DataContainer,
+                                SimpleDataset)
+from p2tab.models.p2tab import P2Tab
+from p2tab.training.log import WandbConfig
+from p2tab.training.loss import (CompoundLoss,
+                                 CompoundLossConfig)
+from p2tab.training.reproducibility import set_seed
+from p2tab.training.utils import SimpleCounter
 
 
 @dataclass
-class ProTabTrainerConfig:
+class P2TabTrainerConfig:
     batch_size: int
     epochs_stage_1: int
     epochs_stage_2: int
@@ -34,12 +34,12 @@ class ProTabTrainerConfig:
     verbose: bool = True
 
 
-class ProTabTrainer:
+class P2TabTrainer:
     def __init__(
             self,
             data_container: DataContainer,
-            model: ProTab,
-            config: ProTabTrainerConfig
+            model: P2Tab,
+            config: P2TabTrainerConfig
     ) -> None:
         set_seed()
         self.config = config
